@@ -42,6 +42,7 @@ button { color: inherit; cursor: pointer; }
 .room-dot, .canvas-status { width: 6px; height: 6px; border-radius: 50%; background: #738d77; }
 .room-area { margin-left: auto; color: #8e958a; font-size: 10px; font-weight: 500; }
 .muted-room { color: #969890; }
+.room-row:disabled { cursor: not-allowed; opacity: .55; }
 .empty-dot { background: #d7d8d2; }
 .furniture-section { padding-top: 19px; }
 .count-pill { min-width: 21px; height: 19px; display: grid; place-items: center; border-radius: 6px; background: #eff1ec; color: #6e806d; font-size: 10px; font-weight: 600; }
@@ -167,6 +168,8 @@ button { color: inherit; cursor: pointer; }
 .property-label { display: flex; align-items: center; position: relative; color: #777a71; font-size: 9px; margin-bottom: 11px; }
 .property-label > span { margin-left: auto; color: #a0a198; }
 .property-label input { width: 100%; height: 31px; margin-top: 5px; padding: 0 9px; border: 1px solid #e8e7e0; border-radius: 5px; outline: none; color: #4b4e46; font-size: 10px; }
+.rotation-handle { cursor: grab; touch-action: none; }
+.rotation-handle:active { cursor: grabbing; }
 .property-label:has(input) { flex-wrap: wrap; }
 .property-label:has(input[type=number]) { width: 50%; padding-right: 5px; }
 .property-row { display: flex; }
@@ -184,6 +187,13 @@ button { color: inherit; cursor: pointer; }
 .room-cancel-button, .room-finish-button { min-height: 29px; border: 1px solid #e4e5df; border-radius: 5px; background: #fff; padding: 0 9px; color: #777970; font-size: 9px; white-space: nowrap; }
 .room-finish-button { border-color: #668371; background: #668371; color: white; font-weight: 600; }
 .room-finish-button:disabled { cursor: not-allowed; opacity: .45; }
+.confirmation-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 20px; background: #20231f66; }
+.confirmation-dialog { width: min(100%, 390px); padding: 24px; border: 1px solid #e8e7e0; border-radius: 12px; background: #fff; box-shadow: 0 18px 60px #22251f38; }
+.confirmation-dialog h2 { margin: 8px 0; color: #3e433c; font: 700 18px 'Manrope', sans-serif; }
+.confirmation-dialog p { margin: 0; color: #777a71; font-size: 12px; line-height: 1.6; }
+.confirmation-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
+.confirmation-actions button { min-height: 34px; padding: 0 13px; border: 1px solid #e4e5df; border-radius: 6px; background: #fff; color: #686d64; font-size: 11px; }
+.confirmation-actions .confirmation-accept { border-color: #668371; background: #668371; color: #fff; font-weight: 600; }
 .mobile-menu { display: none; }
 
 @media (min-width: 1500px) { .sidebar { width: 300px; flex-basis: 300px; }.canvas-area { padding-left: 44px; padding-right: 44px; }.topbar { padding-left: 42px; padding-right: 42px; }.toolbar-row { padding-left: 43px; padding-right: 43px; } }

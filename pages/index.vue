@@ -5,6 +5,7 @@ const RoomScene3D = defineAsyncComponent(() => import('~/components/RoomScene3D.
 
 type Point = { x: number; y: number }
 type FurnitureKind = 'chair' | 'table' | 'cupboard' | 'shelf' | 'cube' | 'window' | 'door'
+type FurnitureSide = 'top' | 'right' | 'bottom' | 'left'
 type PlanItem = {
   id: number
   kind: FurnitureKind
@@ -19,11 +20,16 @@ type PlanItem = {
 }
 type Wall = { id: number; start: Point; end: Point }
 type Measurement = { id: number; start: Point; end: Point }
-type RoomEdge = { id: number; start: Point; end: Point; label: Point; labelAngle: number; length: number }
+type RoomEdge = { id: string; start: Point; end: Point; label: Point; labelAngle: number; length: number; orientations: number[] }
+type DragMeasurement = { id: string; start: Point; end: Point; label: Point; text: string }
 
 const SCALE = 100
 const VIEW_WIDTH = 960
 const VIEW_HEIGHT = 680
+const FURNITURE_WALL_SNAP_DISTANCE = 25
+const WALL_THICKNESS = 12
+const FURNITURE_WALL_CLEARANCE = 1
+const FURNITURE_WALL_MIN_DISTANCE = WALL_THICKNESS / 2 + FURNITURE_WALL_CLEARANCE
 const defaultRoomPoints: Point[] = [
   { x: 125, y: 95 },
   { x: 775, y: 95 },
@@ -31,14 +37,18 @@ const defaultRoomPoints: Point[] = [
   { x: 125, y: 575 },
 ]
 const view = ref<'2d' | '3d'>('2d')
-const activeTool = ref<'select' | 'room' | 'wall' | 'measure' | 'window' | 'door' | 'cube' | 'furniture'>('select')
+const activeTool = ref<'select' | 'room' | 'addRoom' | 'measure' | 'window' | 'door' | 'cube' | 'furniture'>('select')
 const selectedCategory = ref('All items')
 const selectedId = ref<number | null>(null)
 const pendingPoint = ref<Point | null>(null)
 const roomPoints = ref<Point[]>(defaultRoomPoints.map((point) => ({ ...point })))
+const additionalRoomPoints = ref<Point[][]>([])
 const drawingRoomPoints = ref<Point[]>([])
 const drawingCursor = ref<Point | null>(null)
+const drawingCursorClosesRoom = ref(false)
+const drawingCursorSnapsToWall = ref(false)
 const roomDrawingError = ref('')
+const showNewFloorplanConfirmation = ref(false)
 const zoom = ref(1)
 const wallSegments = ref<Wall[]>([])
 const measurements = ref<Measurement[]>([])
@@ -47,8 +57,12 @@ const showGrid = ref(true)
 const showDimensions = ref(true)
 const sidebarOpen = ref(true)
 const isDragging = ref(false)
+const isRotating = ref(false)
 const activePointerId = ref<number | null>(null)
 const dragOffset = ref<Point>({ x: 0, y: 0 })
+const rotationStartPointerAngle = ref(0)
+const rotationStartItemAngle = ref(0)
+const ignoreNextCanvasClick = ref(false)
 const items = ref<PlanItem[]>([
   { id: 1, kind: 'table', x: 395, y: 305, width: 150, depth: 90, height: 75, rotation: 0 },
   { id: 2, kind: 'chair', x: 345, y: 280, width: 48, depth: 48, height: 88, rotation: 0 },
@@ -56,14 +70,14 @@ const items = ref<PlanItem[]>([
   { id: 4, kind: 'chair', x: 345, y: 385, width: 48, depth: 48, height: 88, rotation: 180 },
   { id: 5, kind: 'chair', x: 545, y: 385, width: 48, depth: 48, height: 88, rotation: 180 },
   { id: 6, kind: 'cupboard', x: 220, y: 140, width: 130, depth: 48, height: 190, rotation: 0 },
-  { id: 7, kind: 'shelf', x: 700, y: 240, width: 42, depth: 150, height: 175, rotation: 0 },
+  { id: 7, kind: 'shelf', x: 700, y: 240, width: 150, depth: 42, height: 175, rotation: 0 },
 ])
 
 const catalog = [
   { kind: 'chair' as const, label: 'Chair', detail: '48 × 48 cm', icon: 'chair' },
   { kind: 'table' as const, label: 'Table', detail: '150 × 90 cm', icon: 'table' },
   { kind: 'cupboard' as const, label: 'Cupboard', detail: '130 × 48 cm', icon: 'cupboard' },
-  { kind: 'shelf' as const, label: 'Shelf', detail: '42 × 150 cm', icon: 'shelf' },
+  { kind: 'shelf' as const, label: 'Shelf', detail: '150 × 42 cm', icon: 'shelf' },
 ]
 const categoryItems = computed(() => selectedCategory.value === 'All items'
   ? catalog
@@ -71,8 +85,10 @@ const categoryItems = computed(() => selectedCategory.value === 'All items'
 const selectedItem = computed(() => items.value.find((item) => item.id === selectedId.value) ?? null)
 const placedCount = computed(() => items.value.length)
 const roomBounds = computed(() => {
-  const xs = roomPoints.value.map((point) => point.x)
-  const ys = roomPoints.value.map((point) => point.y)
+  const points = allRoomPoints.value.flat()
+  if (!points.length) return { x: 0, y: 0, width: 0, height: 0 }
+  const xs = points.map((point) => point.x)
+  const ys = points.map((point) => point.y)
   const x = Math.min(...xs)
   const y = Math.min(...ys)
   return {
@@ -82,7 +98,9 @@ const roomBounds = computed(() => {
     height: Math.max(...ys) - y,
   }
 })
-const roomArea = computed(() => roomAreaFor(roomPoints.value))
+const allRooms = computed(() => roomPoints.value.length ? [roomPoints.value, ...additionalRoomPoints.value] : [])
+const allRoomPoints = computed(() => allRooms.value.flat())
+const roomArea = computed(() => allRooms.value.reduce((area, room) => area + roomAreaFor(room), 0))
 const roomCenter = computed(() => {
   let x = 0
   let y = 0
@@ -99,32 +117,168 @@ const roomCenter = computed(() => {
   return { x: x / (3 * crossSum), y: y / (3 * crossSum) }
 })
 const totalArea = computed(() => (roomArea.value / SCALE ** 2).toFixed(1))
-const roomPolygon = computed(() => roomPoints.value.map((point) => `${point.x},${point.y}`).join(' '))
 const roomEdges = computed<RoomEdge[]>(() => {
-  const signedArea = roomPoints.value.reduce((area, point, index) => {
-    const next = roomPoints.value[(index + 1) % roomPoints.value.length]!
-    return area + point.x * next.y - next.x * point.y
-  }, 0) / 2
-  const orientation = Math.sign(signedArea) || 1
-  return roomPoints.value.map((start, index) => {
-    const end = roomPoints.value[(index + 1) % roomPoints.value.length]!
-    const dx = end.x - start.x
-    const dy = end.y - start.y
-    const length = Math.hypot(dx, dy)
-    const offset = 20
-    const labelAngle = Math.atan2(dy, dx) * 180 / Math.PI
-    const readableAngle = labelAngle > 90 || labelAngle < -90 ? labelAngle + 180 : labelAngle
-    return {
-      id: index,
+  const edges: RoomEdge[] = []
+  const seen = new Map<string, RoomEdge>()
+  allRooms.value.forEach((room, roomIndex) => {
+    const signedArea = room.reduce((area, point, index) => {
+      const next = room[(index + 1) % room.length]!
+      return area + point.x * next.y - next.x * point.y
+    }, 0) / 2
+    const orientation = Math.sign(signedArea) || 1
+    room.forEach((start, index) => {
+      const end = room[(index + 1) % room.length]!
+      const dx = end.x - start.x
+      const dy = end.y - start.y
+      const lengthSquared = dx * dx + dy * dy
+      const cuts = allRoomPoints.value.flatMap((point) => {
+        const t = ((point.x - start.x) * dx + (point.y - start.y) * dy) / (lengthSquared || 1)
+        const cross = Math.abs((point.x - start.x) * dy - (point.y - start.y) * dx)
+        return t > 0.001 && t < 0.999 && cross < 0.1 ? [{ point, t }] : []
+      })
+      const splitPoints = [
+        start,
+        ...cuts.sort((a, b) => a.t - b.t).map((cut) => cut.point),
+        end,
+      ]
+      for (let segmentIndex = 0; segmentIndex < splitPoints.length - 1; segmentIndex++) {
+        const segmentStart = splitPoints[segmentIndex]!
+        const segmentEnd = splitPoints[segmentIndex + 1]!
+        const startKey = `${segmentStart.x.toFixed(2)},${segmentStart.y.toFixed(2)}`
+        const endKey = `${segmentEnd.x.toFixed(2)},${segmentEnd.y.toFixed(2)}`
+        const edgeKey = [startKey, endKey].sort().join('|')
+        const existingEdge = seen.get(edgeKey)
+        if (existingEdge) {
+          existingEdge.orientations.push(orientation)
+          continue
+        }
+        const segmentDx = segmentEnd.x - segmentStart.x
+        const segmentDy = segmentEnd.y - segmentStart.y
+        const length = Math.hypot(segmentDx, segmentDy)
+        const offset = 20
+        const labelAngle = Math.atan2(segmentDy, segmentDx) * 180 / Math.PI
+        const readableAngle = labelAngle > 90 || labelAngle < -90 ? labelAngle + 180 : labelAngle
+        const edge: RoomEdge = {
+          id: `${roomIndex}-${index}-${segmentIndex}`,
+          start: segmentStart,
+          end: segmentEnd,
+          orientations: [orientation],
+          label: {
+            x: (segmentStart.x + segmentEnd.x) / 2 + (segmentDy / (length || 1)) * offset * orientation,
+            y: (segmentStart.y + segmentEnd.y) / 2 - (segmentDx / (length || 1)) * offset * orientation,
+          },
+          labelAngle: readableAngle,
+          length: length / SCALE,
+        }
+        edges.push(edge)
+        seen.set(edgeKey, edge)
+      }
+    })
+  })
+  return edges
+})
+const roomDraftMeasurement = computed(() => {
+  const start = drawingRoomPoints.value.at(-1)
+  const end = drawingCursor.value
+  if ((activeTool.value !== 'room' && activeTool.value !== 'addRoom') || !start || !end) return null
+  const dx = end.x - start.x
+  const dy = end.y - start.y
+  const length = Math.hypot(dx, dy)
+  const offset = 16
+  return {
+    start,
+    end,
+    label: {
+      x: (start.x + end.x) / 2 + (dy / (length || 1)) * offset,
+      y: (start.y + end.y) / 2 - (dx / (length || 1)) * offset,
+    },
+    text: `${(length / SCALE).toFixed(2)} m`,
+  }
+})
+const dragMeasurements = computed<DragMeasurement[]>(() => {
+  if (!isDragging.value || isRotating.value || !selectedItem.value || !showDimensions.value) return []
+  const item = selectedItem.value
+  if (item.kind === 'door' || item.kind === 'window') {
+    const edge = nearestRoomEdge({ x: item.x, y: item.y })
+    const projection = projectOnEdge({ x: item.x, y: item.y }, edge, item.width / 2)
+    const fromStart = Math.max(0, projection.distance - item.width / 2)
+    const fromEnd = Math.max(0, edge.length * SCALE - projection.distance - item.width / 2)
+    const direction = {
+      x: (edge.end.x - edge.start.x) / (edge.length * SCALE || 1),
+      y: (edge.end.y - edge.start.y) / (edge.length * SCALE || 1),
+    }
+    const halfWidth = item.width / 2
+    const normal = { x: -direction.y, y: direction.x }
+    const measurementOffset = 22
+    return [
+      {
+        id: 'wall-start',
+        start: {
+          x: item.x - direction.x * halfWidth + normal.x * measurementOffset,
+          y: item.y - direction.y * halfWidth + normal.y * measurementOffset,
+        },
+        end: {
+          x: edge.start.x + normal.x * measurementOffset,
+          y: edge.start.y + normal.y * measurementOffset,
+        },
+        label: {
+          x: (item.x - direction.x * halfWidth + edge.start.x) / 2 + normal.x * measurementOffset,
+          y: (item.y - direction.y * halfWidth + edge.start.y) / 2 + normal.y * measurementOffset,
+        },
+        text: `${(fromStart / SCALE).toFixed(2)} m`,
+      },
+      {
+        id: 'wall-end',
+        start: {
+          x: item.x + direction.x * halfWidth + normal.x * measurementOffset,
+          y: item.y + direction.y * halfWidth + normal.y * measurementOffset,
+        },
+        end: {
+          x: edge.end.x + normal.x * measurementOffset,
+          y: edge.end.y + normal.y * measurementOffset,
+        },
+        label: {
+          x: (item.x + direction.x * halfWidth + edge.end.x) / 2 + normal.x * measurementOffset,
+          y: (item.y + direction.y * halfWidth + edge.end.y) / 2 + normal.y * measurementOffset,
+        },
+        text: `${(fromEnd / SCALE).toFixed(2)} m`,
+      },
+    ]
+  }
+
+  const rotation = item.rotation * Math.PI / 180
+  const widthAxis = { x: Math.cos(rotation), y: Math.sin(rotation) }
+  const depthAxis = { x: -Math.sin(rotation), y: Math.cos(rotation) }
+  const directions = [
+    { id: 'top', x: 0, y: -1 },
+    { id: 'right', x: 1, y: 0 },
+    { id: 'bottom', x: 0, y: 1 },
+    { id: 'left', x: -1, y: 0 },
+  ]
+  return directions.flatMap((direction) => {
+    const boundary = distanceToRoomBoundary({ x: item.x, y: item.y }, direction)
+    if (boundary === null) return []
+    const objectExtent = Math.abs(direction.x * widthAxis.x + direction.y * widthAxis.y) * item.width / 2
+      + Math.abs(direction.x * depthAxis.x + direction.y * depthAxis.y) * item.depth / 2
+    const gap = Math.max(0, boundary - objectExtent)
+    const start = {
+      x: item.x + direction.x * objectExtent,
+      y: item.y + direction.y * objectExtent,
+    }
+    const end = {
+      x: item.x + direction.x * boundary,
+      y: item.y + direction.y * boundary,
+    }
+    return [{
+      id: direction.id,
       start,
       end,
       label: {
-        x: (start.x + end.x) / 2 + (dy / (length || 1)) * offset * orientation,
-        y: (start.y + end.y) / 2 - (dx / (length || 1)) * offset * orientation,
+        x: (start.x + end.x) / 2 + (direction.x === 0 ? 14 : 0),
+        y: (start.y + end.y) / 2 + (direction.y === 0 ? -12 : 0),
       },
-      labelAngle: readableAngle,
-      length: length / SCALE,
-    }
+      text: `${(gap / SCALE).toFixed(2)} m`,
+    }]
   })
 })
 const planViewBox = computed(() => {
@@ -133,16 +287,293 @@ const planViewBox = computed(() => {
   return `${(VIEW_WIDTH - width) / 2} ${(VIEW_HEIGHT - height) / 2} ${width} ${height}`
 })
 
-function isPointInsideRoom(point: Point) {
+function projectPointToSegment(point: Point, start: Point, end: Point): Point {
+  const dx = end.x - start.x
+  const dy = end.y - start.y
+  const lengthSquared = dx * dx + dy * dy
+  if (!lengthSquared) return { ...start }
+  const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared))
+  return { x: start.x + t * dx, y: start.y + t * dy }
+}
+
+function nearestRoomBoundaryPoint(point: Point) {
+  let nearest: { point: Point; distance: number } | null = null
+  for (const edge of roomEdges.value) {
+    const projected = projectPointToSegment(point, edge.start, edge.end)
+    const distance = Math.hypot(projected.x - point.x, projected.y - point.y)
+    if (!nearest || distance < nearest.distance) nearest = { point: projected, distance }
+  }
+  return nearest
+}
+
+function roomBoundaryRoutes(room: Point[], start: Point, end: Point) {
+  const startEdges = room.flatMap((edgeStart, index) => {
+    const edgeEnd = room[(index + 1) % room.length]!
+    const projected = projectPointToSegment(start, edgeStart, edgeEnd)
+    return Math.hypot(projected.x - start.x, projected.y - start.y) <= 0.1
+      ? [{ index, t: edgeParameter(projected, edgeStart, edgeEnd) }]
+      : []
+  })
+  const endEdges = room.flatMap((edgeStart, index) => {
+    const edgeEnd = room[(index + 1) % room.length]!
+    const projected = projectPointToSegment(end, edgeStart, edgeEnd)
+    return Math.hypot(projected.x - end.x, projected.y - end.y) <= 0.1
+      ? [{ index, t: edgeParameter(projected, edgeStart, edgeEnd) }]
+      : []
+  })
+  const routes: Point[][] = []
+  for (const startEdge of startEdges) {
+    for (const endEdge of endEdges) {
+      const forward: Point[] = [{ ...start }]
+      if (startEdge.index === endEdge.index && endEdge.t >= startEdge.t) {
+        forward.push({ ...end })
+      } else {
+        let index = (startEdge.index + 1) % room.length
+        forward.push({ ...room[index]! })
+        for (let step = 0; index !== endEdge.index && step < room.length; step++) {
+          index = (index + 1) % room.length
+          forward.push({ ...room[index]! })
+        }
+        forward.push({ ...end })
+      }
+      routes.push(forward)
+
+      const backward: Point[] = [{ ...start }]
+      if (startEdge.index === endEdge.index && endEdge.t <= startEdge.t) {
+        backward.push({ ...end })
+      } else {
+        let index = startEdge.index
+        backward.push({ ...room[index]! })
+        for (let step = 0; index !== (endEdge.index + 1) % room.length && step < room.length; step++) {
+          index = (index - 1 + room.length) % room.length
+          backward.push({ ...room[index]! })
+        }
+        backward.push({ ...end })
+      }
+      routes.push(backward)
+    }
+  }
+  return routes
+}
+
+function edgeParameter(point: Point, start: Point, end: Point) {
+  const dx = end.x - start.x
+  const dy = end.y - start.y
+  return ((point.x - start.x) * dx + (point.y - start.y) * dy) / (dx * dx + dy * dy || 1)
+}
+
+function pointOnSegment(point: Point, start: Point, end: Point) {
+  const cross = (end.x - start.x) * (point.y - start.y) - (end.y - start.y) * (point.x - start.x)
+  return Math.abs(cross) <= 0.1
+    && point.x >= Math.min(start.x, end.x) - 0.1
+    && point.x <= Math.max(start.x, end.x) + 0.1
+    && point.y >= Math.min(start.y, end.y) - 0.1
+    && point.y <= Math.max(start.y, end.y) + 0.1
+}
+
+function samePoint(first: Point, second: Point) {
+  return Math.hypot(first.x - second.x, first.y - second.y) <= 0.1
+}
+
+function nearestRoomEdge(point: Point) {
+  return roomEdges.value.reduce((nearest, edge) => {
+    const nearestPoint = projectPointToSegment(point, nearest.start, nearest.end)
+    const edgePoint = projectPointToSegment(point, edge.start, edge.end)
+    return Math.hypot(edgePoint.x - point.x, edgePoint.y - point.y)
+      < Math.hypot(nearestPoint.x - point.x, nearestPoint.y - point.y)
+      ? edge
+      : nearest
+  }, roomEdges.value[0]!)
+}
+
+function sideVector(side: FurnitureSide): Point {
+  if (side === 'top') return { x: 0, y: -1 }
+  if (side === 'right') return { x: 1, y: 0 }
+  if (side === 'bottom') return { x: 0, y: 1 }
+  return { x: -1, y: 0 }
+}
+
+function defaultRearSide(kind: FurnitureKind, width: number, depth: number): FurnitureSide {
+  if (kind === 'chair') return 'top'
+  if (kind === 'table') return width >= depth ? 'top' : 'left'
+  if (kind === 'cupboard' || kind === 'shelf') return width >= depth ? 'top' : 'left'
+  return 'top'
+}
+
+function snapFurnitureToWall(point: Point, item: PlanItem) {
+  const candidates = [
+    ...roomEdges.value.flatMap((edge) => edge.orientations.map((orientation) => ({
+      start: edge.start,
+      end: edge.end,
+      isPerimeter: true,
+      orientation,
+    }))),
+    ...wallSegments.value.map((wall) => ({ start: wall.start, end: wall.end, isPerimeter: false, orientation: 1 })),
+  ]
+  let nearest: { point: Point; rotation: number; distance: number } | null = null
+
+  for (const edge of candidates) {
+    const dx = edge.end.x - edge.start.x
+    const dy = edge.end.y - edge.start.y
+    const length = Math.hypot(dx, dy)
+    if (length < 0.001) continue
+    const tangent = { x: dx / length, y: dy / length }
+    const normal = { x: -tangent.y, y: tangent.x }
+    const projected = projectPointToSegment(point, edge.start, edge.end)
+    let towardWall = { x: projected.x - point.x, y: projected.y - point.y }
+    let distance = Math.hypot(towardWall.x, towardWall.y)
+    if (edge.isPerimeter) {
+      const inward = edge.orientation > 0 ? normal : { x: -normal.x, y: -normal.y }
+      const insideDistance = (point.x - projected.x) * inward.x + (point.y - projected.y) * inward.y
+      if (insideDistance < -0.001) continue
+      if (distance < 0.001) {
+        towardWall = { x: -inward.x, y: -inward.y }
+        distance = 0
+      }
+    } else if (distance < 0.001) {
+      towardWall = normal
+    }
+
+    towardWall = { x: towardWall.x / (distance || 1), y: towardWall.y / (distance || 1) }
+    const rear = sideVector(defaultRearSide(item.kind, item.width, item.depth))
+    const rotation = Math.atan2(towardWall.y, towardWall.x) - Math.atan2(rear.y, rear.x)
+    const widthAxis = { x: Math.cos(rotation), y: Math.sin(rotation) }
+    const depthAxis = { x: -Math.sin(rotation), y: Math.cos(rotation) }
+    const normalExtent = Math.abs(towardWall.x * widthAxis.x + towardWall.y * widthAxis.y) * item.width / 2
+      + Math.abs(towardWall.x * depthAxis.x + towardWall.y * depthAxis.y) * item.depth / 2
+    const wallGap = distance - normalExtent - WALL_THICKNESS / 2
+    if (wallGap > FURNITURE_WALL_SNAP_DISTANCE || (nearest && wallGap >= nearest.distance)) continue
+
+    const tangentExtent = Math.abs(tangent.x * widthAxis.x + tangent.y * widthAxis.y) * item.width / 2
+      + Math.abs(tangent.x * depthAxis.x + tangent.y * depthAxis.y) * item.depth / 2
+    if (length < tangentExtent * 2) continue
+    const aligned = projectOnEdge(point, {
+      id: '-1',
+      start: edge.start,
+      end: edge.end,
+      label: edge.start,
+      labelAngle: 0,
+      length: length / SCALE,
+      orientations: [edge.orientation],
+    }, tangentExtent)
+    const snappedPoint = {
+      x: aligned.point.x - towardWall.x * (normalExtent + WALL_THICKNESS / 2 + FURNITURE_WALL_CLEARANCE),
+      y: aligned.point.y - towardWall.y * (normalExtent + WALL_THICKNESS / 2 + FURNITURE_WALL_CLEARANCE),
+    }
+    if (!isFurniturePlacementValid(snappedPoint, item, rotation * 180 / Math.PI)) continue
+    nearest = {
+      point: snappedPoint,
+      rotation: rotation * 180 / Math.PI,
+      distance: wallGap,
+    }
+  }
+
+  return nearest
+}
+
+function projectOnEdge(point: Point, edge: RoomEdge, padding: number) {
+  const edgeLength = edge.length * SCALE
+  const dx = edge.end.x - edge.start.x
+  const dy = edge.end.y - edge.start.y
+  const lengthSquared = dx * dx + dy * dy
+  const rawT = lengthSquared
+    ? ((point.x - edge.start.x) * dx + (point.y - edge.start.y) * dy) / lengthSquared
+    : 0.5
+  const minT = edgeLength > 2 * padding ? padding / edgeLength : 0.5
+  const maxT = edgeLength > 2 * padding ? 1 - minT : 0.5
+  const t = Math.max(minT, Math.min(maxT, rawT))
+  return {
+    point: { x: edge.start.x + dx * t, y: edge.start.y + dy * t },
+    distance: edgeLength * t,
+  }
+}
+
+function distanceToRoomBoundary(origin: Point, direction: Point) {
+  let nearest: number | null = null
+  for (const edge of roomEdges.value) {
+    const segment = { x: edge.end.x - edge.start.x, y: edge.end.y - edge.start.y }
+    const offset = { x: edge.start.x - origin.x, y: edge.start.y - origin.y }
+    const denominator = direction.x * segment.y - direction.y * segment.x
+    if (Math.abs(denominator) < 0.001) continue
+    const rayDistance = (offset.x * segment.y - offset.y * segment.x) / denominator
+    const edgeT = (offset.x * direction.y - offset.y * direction.x) / denominator
+    if (rayDistance >= -0.001 && edgeT >= -0.001 && edgeT <= 1.001 && (nearest === null || rayDistance < nearest)) {
+      nearest = Math.max(0, rayDistance)
+    }
+  }
+  return nearest
+}
+
+function isPointInsidePolygon(point: Point, polygon: Point[]) {
   let inside = false
-  for (let index = 0, previous = roomPoints.value.length - 1; index < roomPoints.value.length; previous = index++) {
-    const current = roomPoints.value[index]!
-    const last = roomPoints.value[previous]!
+  for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index++) {
+    const current = polygon[index]!
+    const last = polygon[previous]!
     const crosses = (current.y > point.y) !== (last.y > point.y)
       && point.x < ((last.x - current.x) * (point.y - current.y)) / (last.y - current.y) + current.x
     if (crosses) inside = !inside
   }
   return inside
+}
+
+function isPointInsideRoom(point: Point) {
+  return allRooms.value.some((room) => isPointInsidePolygon(point, room))
+}
+
+function distanceBetweenSegments(a: Point, b: Point, c: Point, d: Point) {
+  if (segmentsIntersect(a, b, c, d)) return 0
+  const distanceToSegment = (point: Point, start: Point, end: Point) => {
+    const projected = projectPointToSegment(point, start, end)
+    return Math.hypot(projected.x - point.x, projected.y - point.y)
+  }
+  return Math.min(
+    distanceToSegment(a, c, d),
+    distanceToSegment(b, c, d),
+    distanceToSegment(c, a, b),
+    distanceToSegment(d, a, b),
+  )
+}
+
+function furnitureFootprint(center: Point, item: PlanItem, rotation = item.rotation) {
+  const angle = rotation * Math.PI / 180
+  const widthAxis = { x: Math.cos(angle), y: Math.sin(angle) }
+  const depthAxis = { x: -Math.sin(angle), y: Math.cos(angle) }
+  return [
+    { x: -1, y: -1 },
+    { x: 1, y: -1 },
+    { x: 1, y: 1 },
+    { x: -1, y: 1 },
+  ].map((corner) => ({
+    x: center.x + widthAxis.x * corner.x * item.width / 2 + depthAxis.x * corner.y * item.depth / 2,
+    y: center.y + widthAxis.y * corner.x * item.width / 2 + depthAxis.y * corner.y * item.depth / 2,
+  }))
+}
+
+function isFurniturePlacementValid(center: Point, item: PlanItem, rotation = item.rotation) {
+  const footprint = furnitureFootprint(center, item, rotation)
+  const samples = [
+    ...footprint,
+    center,
+    ...footprint.map((point, index) => {
+      const next = footprint[(index + 1) % footprint.length]!
+      return { x: (point.x + next.x) / 2, y: (point.y + next.y) / 2 }
+    }),
+  ]
+  if (samples.some((point) => !isPointInsideRoom(point))) return false
+
+  const allWalls = [
+    ...roomEdges.value.map((edge) => ({ start: edge.start, end: edge.end })),
+    ...wallSegments.value,
+  ]
+  for (const wall of allWalls) {
+    if (isPointInsidePolygon(wall.start, footprint) || isPointInsidePolygon(wall.end, footprint)) return false
+    for (let index = 0; index < footprint.length; index++) {
+      const start = footprint[index]!
+      const end = footprint[(index + 1) % footprint.length]!
+      if (distanceBetweenSegments(start, end, wall.start, wall.end) < FURNITURE_WALL_MIN_DISTANCE) return false
+    }
+  }
+  return true
 }
 
 function orientation(a: Point, b: Point, c: Point) {
@@ -166,6 +597,17 @@ function segmentsIntersect(a: Point, b: Point, c: Point, d: Point) {
     || (cdB === 0 && onSegment(c, b, d))
 }
 
+function segmentsProperlyIntersect(a: Point, b: Point, c: Point, d: Point) {
+  const cross = (start: Point, end: Point, point: Point) =>
+    (end.x - start.x) * (point.y - start.y) - (end.y - start.y) * (point.x - start.x)
+  const firstC = cross(a, b, c)
+  const firstD = cross(a, b, d)
+  const secondA = cross(c, d, a)
+  const secondB = cross(c, d, b)
+  return ((firstC > 0.001 && firstD < -0.001) || (firstC < -0.001 && firstD > 0.001))
+    && ((secondA > 0.001 && secondB < -0.001) || (secondA < -0.001 && secondB > 0.001))
+}
+
 function isSimpleRoom(points: Point[]) {
   for (let first = 0; first < points.length; first++) {
     const firstEnd = (first + 1) % points.length
@@ -183,7 +625,7 @@ function dimensions(kind: FurnitureKind) {
     chair: [48, 48, 88],
     table: [150, 90, 75],
     cupboard: [130, 48, 190],
-    shelf: [42, 150, 175],
+    shelf: [150, 42, 175],
     cube: [80, 80, 80],
     window: [110, 12, 130],
     door: [90, 15, 205],
@@ -192,6 +634,12 @@ function dimensions(kind: FurnitureKind) {
 }
 
 function addItem(kind: FurnitureKind, at?: Point) {
+  if (!roomPoints.value.length) {
+    roomDrawingError.value = 'Finish drawing the floorplan before adding items.'
+    activeTool.value = 'room'
+    view.value = '2d'
+    return
+  }
   const [width, depth, height] = dimensions(kind)
   const id = nextId.value++
   const longestEdge = roomEdges.value.reduce((longest, edge) => edge.length > longest.length ? edge : longest, roomEdges.value[0]!)
@@ -229,27 +677,106 @@ function svgPoint(event: MouseEvent | PointerEvent, svg = event.currentTarget as
   return { x: point.x, y: point.y }
 }
 
+function getRoomDrawingPoint(rawPoint: Point, shiftKey: boolean) {
+  const point = {
+    x: Math.max(20, Math.min(VIEW_WIDTH - 20, rawPoint.x)),
+    y: Math.max(20, Math.min(VIEW_HEIGHT - 20, rawPoint.y)),
+  }
+  if (activeTool.value === 'addRoom') {
+    const boundary = nearestRoomBoundaryPoint(point)
+    const first = drawingRoomPoints.value[0]
+    if (!first) {
+      drawingCursorSnapsToWall.value = Boolean(boundary && boundary.distance <= 25)
+      return boundary && boundary.distance <= 25 ? boundary.point : point
+    }
+    if (drawingRoomPoints.value.length >= 3 && boundary && boundary.distance <= 20
+      && Math.hypot(boundary.point.x - first.x, boundary.point.y - first.y) >= 25) {
+      drawingCursorClosesRoom.value = true
+      drawingCursorSnapsToWall.value = true
+      return boundary.point
+    }
+    drawingCursorClosesRoom.value = false
+    drawingCursorSnapsToWall.value = false
+    if (shiftKey) return point
+    const previous = drawingRoomPoints.value.at(-1)!
+    const dx = point.x - previous.x
+    const dy = point.y - previous.y
+    const distance = Math.hypot(dx, dy)
+    if (distance < 0.001) return { ...previous }
+    const increment = Math.PI / 18
+    const angle = Math.round(Math.atan2(dy, dx) / increment) * increment
+    return {
+      x: previous.x + Math.cos(angle) * distance,
+      y: previous.y + Math.sin(angle) * distance,
+    }
+  }
+  if (shiftKey) {
+    drawingCursorClosesRoom.value = false
+    return point
+  }
+
+  const first = drawingRoomPoints.value[0]
+  if (first && drawingRoomPoints.value.length >= 3 && Math.hypot(point.x - first.x, point.y - first.y) <= 20) {
+    drawingCursorClosesRoom.value = true
+    return { ...first }
+  }
+  drawingCursorClosesRoom.value = false
+
+  const previous = drawingRoomPoints.value.at(-1)
+  if (!previous) {
+    return { x: Math.round(point.x / 10) * 10, y: Math.round(point.y / 10) * 10 }
+  }
+
+  const dx = point.x - previous.x
+  const dy = point.y - previous.y
+  const distance = Math.hypot(dx, dy)
+  if (distance < 0.001) return { ...previous }
+  const increment = Math.PI / 18
+  const angle = Math.round(Math.atan2(dy, dx) / increment) * increment
+  return {
+    x: previous.x + Math.cos(angle) * distance,
+    y: previous.y + Math.sin(angle) * distance,
+  }
+}
+
 function onCanvasClick(event: MouseEvent) {
+  if (ignoreNextCanvasClick.value) {
+    ignoreNextCanvasClick.value = false
+    return
+  }
   if ((event.target as Element).closest('.plan-item')) return
   const rawPoint = svgPoint(event)
-  const point = {
-    x: Math.max(20, Math.min(VIEW_WIDTH - 20, Math.round(rawPoint.x / 10) * 10)),
-    y: Math.max(20, Math.min(VIEW_HEIGHT - 20, Math.round(rawPoint.y / 10) * 10)),
-  }
-  if (activeTool.value === 'room') {
+  if (activeTool.value === 'room' || activeTool.value === 'addRoom') {
+    if (activeTool.value === 'addRoom' && !drawingRoomPoints.value.length) {
+      const boundary = nearestRoomBoundaryPoint(rawPoint)
+      if (!boundary || boundary.distance > 25) {
+        roomDrawingError.value = 'Start on an existing room wall or corner.'
+        return
+      }
+      drawingRoomPoints.value.push(boundary.point)
+      drawingCursor.value = boundary.point
+      drawingCursorSnapsToWall.value = true
+      roomDrawingError.value = ''
+      return
+    }
+    const point = getRoomDrawingPoint(rawPoint, event.shiftKey)
+    if (activeTool.value === 'addRoom' && drawingCursorClosesRoom.value) {
+      finishRoomAddition(point)
+      return
+    }
+    if (drawingCursorClosesRoom.value) {
+      finishRoomDrawing()
+      return
+    }
     const previous = drawingRoomPoints.value.at(-1)
     if (previous && Math.hypot(previous.x - point.x, previous.y - point.y) < 10) return
     roomDrawingError.value = ''
     drawingRoomPoints.value.push(point)
     return
   }
-  if (activeTool.value === 'wall') {
-    if (!pendingPoint.value) pendingPoint.value = point
-    else {
-      wallSegments.value.push({ id: nextId.value++, start: pendingPoint.value, end: point })
-      pendingPoint.value = null
-    }
-    return
+  const point = {
+    x: Math.max(20, Math.min(VIEW_WIDTH - 20, Math.round(rawPoint.x / 10) * 10)),
+    y: Math.max(20, Math.min(VIEW_HEIGHT - 20, Math.round(rawPoint.y / 10) * 10)),
   }
   if (activeTool.value === 'measure') {
     if (!pendingPoint.value) pendingPoint.value = point
@@ -277,20 +804,59 @@ function itemPointerDown(event: PointerEvent, item: PlanItem) {
     dragOffset.value = { x: item.x - point.x, y: item.y - point.y }
   }
   if (svg?.setPointerCapture) svg.setPointerCapture(event.pointerId)
+  ignoreNextCanvasClick.value = true
   activePointerId.value = event.pointerId
   isDragging.value = true
 }
 
+function rotationHandlePointerDown(event: PointerEvent, item: PlanItem) {
+  event.stopPropagation()
+  selectedId.value = item.id
+  if (activeTool.value !== 'select' || !event.isPrimary || event.button !== 0) return
+  const svg = (event.currentTarget as SVGGElement).ownerSVGElement
+  if (!svg) return
+  const pointer = svgPoint(event, svg)
+  rotationStartPointerAngle.value = Math.atan2(pointer.y - item.y, pointer.x - item.x) * 180 / Math.PI
+  rotationStartItemAngle.value = item.rotation
+  svg.setPointerCapture(event.pointerId)
+  ignoreNextCanvasClick.value = true
+  activePointerId.value = event.pointerId
+  isRotating.value = true
+  isDragging.value = true
+}
+
 function onCanvasPointerMove(event: PointerEvent) {
-  if (activeTool.value === 'room' && drawingRoomPoints.value.length > 0) {
-    drawingCursor.value = svgPoint(event)
+  if (activeTool.value === 'room' || activeTool.value === 'addRoom') {
+    drawingCursor.value = getRoomDrawingPoint(svgPoint(event), event.shiftKey)
   }
   if (!isDragging.value || selectedId.value === null || activePointerId.value !== event.pointerId) return
   const pointerPoint = svgPoint(event)
   const point = { x: pointerPoint.x + dragOffset.value.x, y: pointerPoint.y + dragOffset.value.y }
-  if (isPointInsideRoom(point)) {
-    const item = items.value.find((entry) => entry.id === selectedId.value)
-    if (item) {
+  const item = items.value.find((entry) => entry.id === selectedId.value)
+  if (!item) return
+  if (isRotating.value) {
+    const pointerAngle = Math.atan2(pointerPoint.y - item.y, pointerPoint.x - item.x) * 180 / Math.PI
+    let angleDelta = pointerAngle - rotationStartPointerAngle.value
+    if (angleDelta > 180) angleDelta -= 360
+    if (angleDelta < -180) angleDelta += 360
+    const increment = event.shiftKey ? 1 : 10
+    const rotation = rotationStartItemAngle.value + Math.round(angleDelta / increment) * increment
+    if (isFurniturePlacementValid({ x: item.x, y: item.y }, item, rotation)) item.rotation = rotation
+    return
+  }
+  if (item.kind === 'door' || item.kind === 'window') {
+    const edge = nearestRoomEdge(point)
+    const projected = projectOnEdge(point, edge, item.width / 2)
+    item.x = projected.point.x
+    item.y = projected.point.y
+    item.rotation = Math.atan2(edge.end.y - edge.start.y, edge.end.x - edge.start.x) * 180 / Math.PI
+  } else {
+    const snapped = snapFurnitureToWall(point, item)
+    if (snapped) {
+      item.x = snapped.point.x
+      item.y = snapped.point.y
+      item.rotation = snapped.rotation
+    } else if (isFurniturePlacementValid(point, item)) {
       item.x = point.x
       item.y = point.y
     }
@@ -299,15 +865,32 @@ function onCanvasPointerMove(event: PointerEvent) {
 
 function stopDragging() {
   isDragging.value = false
+  isRotating.value = false
   activePointerId.value = null
+  window.setTimeout(() => {
+    ignoreNextCanvasClick.value = false
+  }, 0)
 }
 
 function beginRoomDrawing() {
-  if (items.value.length || wallSegments.value.length || measurements.value.length) {
-    if (!window.confirm('Draw a new room? This will replace the current room and remove its furniture, walls, and measurements.')) return
-  }
+  showNewFloorplanConfirmation.value = true
+}
+
+function cancelNewFloorplan() {
+  showNewFloorplanConfirmation.value = false
+}
+
+function confirmNewFloorplan() {
+  showNewFloorplanConfirmation.value = false
+  items.value = []
+  wallSegments.value = []
+  measurements.value = []
+  roomPoints.value = []
+  additionalRoomPoints.value = []
   drawingRoomPoints.value = []
   drawingCursor.value = null
+  drawingCursorClosesRoom.value = false
+  drawingCursorSnapsToWall.value = false
   roomDrawingError.value = ''
   pendingPoint.value = null
   selectedId.value = null
@@ -330,11 +913,96 @@ function finishRoomDrawing() {
     return
   }
   roomPoints.value = points.map((point) => ({ ...point }))
+  additionalRoomPoints.value = []
   items.value = []
   wallSegments.value = []
   measurements.value = []
   drawingRoomPoints.value = []
   drawingCursor.value = null
+  drawingCursorClosesRoom.value = false
+  drawingCursorSnapsToWall.value = false
+  roomDrawingError.value = ''
+  activeTool.value = 'select'
+}
+
+function beginRoomAddition() {
+  if (!allRooms.value.length) return
+  drawingRoomPoints.value = []
+  drawingCursor.value = null
+  drawingCursorClosesRoom.value = false
+  drawingCursorSnapsToWall.value = false
+  roomDrawingError.value = ''
+  pendingPoint.value = null
+  selectedId.value = null
+  activeTool.value = 'addRoom'
+  view.value = '2d'
+}
+
+function finishRoomAddition(endPoint: Point) {
+  const trace = drawingRoomPoints.value.map((point) => ({ ...point }))
+  if (trace.length < 3 || Math.hypot(trace[0]!.x - endPoint.x, trace[0]!.y - endPoint.y) < 25) {
+    roomDrawingError.value = 'Finish at a different point on an existing wall.'
+    return
+  }
+  const existingRooms = allRooms.value
+  const startPoint = trace[0]!
+  const routes = existingRooms.flatMap((room) => roomBoundaryRoutes(room, endPoint, startPoint))
+  if (!routes.length) {
+    roomDrawingError.value = 'Finish on a wall connected to the wall where the room started.'
+    return
+  }
+
+  const allExistingWalls = [
+    ...roomEdges.value.map((edge) => ({ start: edge.start, end: edge.end })),
+    ...wallSegments.value,
+  ]
+  const traceCrossesWall = trace.slice(0, -1).some((start, index) => {
+    const end = trace[index + 1]!
+    return allExistingWalls.some((wall) => {
+      if (!segmentsIntersect(start, end, wall.start, wall.end)) return false
+      const allowedStartContact = samePoint(start, startPoint) && pointOnSegment(startPoint, wall.start, wall.end)
+      const allowedEndContact = samePoint(end, endPoint) && pointOnSegment(endPoint, wall.start, wall.end)
+      const crossesThroughWall = segmentsProperlyIntersect(start, end, wall.start, wall.end)
+        || [wall.start, wall.end].some((wallPoint) =>
+          pointOnSegment(wallPoint, start, end) && !samePoint(wallPoint, startPoint) && !samePoint(wallPoint, endPoint))
+      return crossesThroughWall || (!allowedStartContact && !allowedEndContact)
+    })
+  })
+  if (traceCrossesWall) {
+    roomDrawingError.value = 'A new wall cannot cross an existing wall.'
+    return
+  }
+
+  const candidates = routes
+    .map((route) => [...trace, ...route.slice(1, -1)])
+    .filter((points) => points.length >= 3 && roomAreaFor(points) >= 100 && isSimpleRoom(points))
+    .filter((points) => {
+      const onRoomBoundary = (point: Point, room: Point[]) => room.some((edgeStart, index) =>
+        pointOnSegment(point, edgeStart, room[(index + 1) % room.length]!))
+      const onCandidateBoundary = (point: Point) => points.some((edgeStart, index) =>
+        pointOnSegment(point, edgeStart, points[(index + 1) % points.length]!))
+      const newInteriorOverlaps = existingRooms.some((room) => {
+        if (points.some((point) => isPointInsidePolygon(point, room) && !onRoomBoundary(point, room))) return true
+        return points.some((edgeStart, index) => {
+          const edgeEnd = points[(index + 1) % points.length]!
+          const midpoint = { x: (edgeStart.x + edgeEnd.x) / 2, y: (edgeStart.y + edgeEnd.y) / 2 }
+          return isPointInsidePolygon(midpoint, room) && !onRoomBoundary(midpoint, room)
+        })
+      })
+      const existingInteriorOverlaps = existingRooms.some((room) =>
+        room.some((point) => isPointInsidePolygon(point, points) && !onCandidateBoundary(point)))
+      return !newInteriorOverlaps && !existingInteriorOverlaps
+    })
+  if (!candidates.length) {
+    roomDrawingError.value = 'The new room would overlap an existing room or wall.'
+    return
+  }
+  candidates.sort((first, second) => roomAreaFor(first) - roomAreaFor(second))
+  additionalRoomPoints.value.push(candidates[0]!)
+  drawingRoomPoints.value = []
+  drawingCursor.value = null
+  drawingCursorClosesRoom.value = false
+  drawingCursorSnapsToWall.value = false
   roomDrawingError.value = ''
   activeTool.value = 'select'
 }
@@ -349,6 +1017,8 @@ function roomAreaFor(points: Point[]) {
 function cancelRoomDrawing() {
   drawingRoomPoints.value = []
   drawingCursor.value = null
+  drawingCursorClosesRoom.value = false
+  drawingCursorSnapsToWall.value = false
   roomDrawingError.value = ''
   activeTool.value = 'select'
 }
@@ -387,6 +1057,7 @@ function exportPlan() {
       points: roomPoints.value,
       area: roomArea.value,
     },
+    rooms: allRooms.value,
     items: items.value,
     walls: wallSegments.value,
     measurements: measurements.value,
@@ -430,12 +1101,23 @@ onMounted(() => {
   const savedPlan = window.localStorage.getItem('roomwise-plan-v1')
   if (savedPlan) {
     try {
-      const plan = JSON.parse(savedPlan) as { items?: PlanItem[]; walls?: Wall[]; measurements?: Measurement[]; roomPoints?: Point[] }
+      const plan = JSON.parse(savedPlan) as { items?: Array<PlanItem & { rearSide?: unknown }>; walls?: Wall[]; measurements?: Measurement[]; roomPoints?: Point[]; rooms?: Point[][] }
       if (Array.isArray(plan.items) && Array.isArray(plan.walls) && Array.isArray(plan.measurements)) {
-        items.value = plan.items
+        items.value = plan.items.map(({ rearSide: _rearSide, ...item }) => {
+          if (item.kind === 'shelf' && item.width === 42 && item.depth === 150 && item.height === 175) {
+            return { ...item, width: 150, depth: 42 }
+          }
+          return item
+        })
         wallSegments.value = plan.walls
         measurements.value = plan.measurements
-        if (Array.isArray(plan.roomPoints) && plan.roomPoints.length >= 3) roomPoints.value = plan.roomPoints
+        if (Array.isArray(plan.rooms) && plan.rooms.every((room) => Array.isArray(room) && room.length >= 3)) {
+          roomPoints.value = plan.rooms[0] ?? []
+          additionalRoomPoints.value = plan.rooms.slice(1)
+        } else if (Array.isArray(plan.roomPoints)) {
+          roomPoints.value = plan.roomPoints.length >= 3 ? plan.roomPoints : []
+          additionalRoomPoints.value = []
+        }
         nextId.value = Math.max(10, ...items.value.map((item) => item.id + 1), ...wallSegments.value.map((wall) => wall.id + 1), ...measurements.value.map((measurement) => measurement.id + 1))
       } else {
         console.warn('Saved room plan has an invalid structure and was not restored.')
@@ -449,13 +1131,14 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointerup', stopDragging)
   window.removeEventListener('pointercancel', stopDragging)
 })
-watch([items, wallSegments, measurements, roomPoints], () => {
+watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints], () => {
   if (import.meta.client) {
     window.localStorage.setItem('roomwise-plan-v1', JSON.stringify({
       items: items.value,
       walls: wallSegments.value,
       measurements: measurements.value,
       roomPoints: roomPoints.value,
+      rooms: allRooms.value,
     }))
   }
 }, { deep: true })
@@ -475,9 +1158,11 @@ watch([items, wallSegments, measurements, roomPoints], () => {
         </div>
 
         <div class="sidebar-section room-section">
-          <div class="section-heading"><span class="section-eyebrow">ROOMS</span><button class="icon-button add-room" aria-label="Draw a new room" title="Draw a new room" @click="beginRoomDrawing">+</button></div>
-          <button class="room-row active-room"><span class="room-dot"></span><span>Living room</span><span class="room-area">{{ totalArea }} m²</span></button>
-          <button class="room-row muted-room" @click="beginRoomDrawing"><span class="room-dot empty-dot"></span><span>+ Draw a new room</span></button>
+          <div class="section-heading"><span class="section-eyebrow">FLOORPLAN</span></div>
+          <button v-for="(room, index) in allRooms" :key="`room-${index}`" class="room-row active-room"><span class="room-dot"></span><span>{{ index === 0 ? 'Living room' : `Room ${index + 1}` }}</span><span class="room-area">{{ (roomAreaFor(room) / SCALE ** 2).toFixed(1) }} m²</span></button>
+          <div v-if="!allRooms.length" class="room-row muted-room"><span class="room-dot empty-dot"></span><span>No floorplan drawn</span></div>
+          <button class="room-row muted-room" :disabled="!allRooms.length" @click="beginRoomAddition"><span class="room-dot empty-dot"></span><span>+ Add a room</span></button>
+          <button class="room-row muted-room" @click="beginRoomDrawing"><span class="room-dot empty-dot"></span><span>+ Draw a new floorplan</span></button>
         </div>
 
         <div class="sidebar-section furniture-section">
@@ -486,7 +1171,7 @@ watch([items, wallSegments, measurements, roomPoints], () => {
             <button v-for="category in ['All items', 'Furniture']" :key="category" :class="{ active: selectedCategory === category }" @click="selectedCategory = category">{{ category }}</button>
           </div>
           <div class="catalog-grid">
-            <button v-for="entry in categoryItems" :key="entry.kind" class="catalog-card" @click="addCatalogItem(entry.kind)">
+            <button v-for="entry in categoryItems" :key="entry.kind" class="catalog-card" :disabled="!roomPoints.length" @click="addCatalogItem(entry.kind)">
               <span class="catalog-icon" :class="`icon-${entry.icon}`">
                 <svg v-if="entry.kind === 'chair'" viewBox="0 0 42 42"><path d="M13 11h16v13H13zM11 24h20v4H11zM14 28l-2 8m16-8 2 8M13 18H9v7m20-7h4v7"/></svg>
                 <svg v-else-if="entry.kind === 'table'" viewBox="0 0 42 42"><path d="M8 15h26v4H8zm4 4v14m18-14v14M7 33h28"/></svg>
@@ -498,10 +1183,10 @@ watch([items, wallSegments, measurements, roomPoints], () => {
             </button>
           </div>
           <div class="section-heading geometry-heading"><span class="section-eyebrow">GEOMETRY</span><span class="new-pill">NEW</span></div>
-          <button class="geometry-card" @click="selectTool('cube')"><span class="cube-icon">◇</span><span><strong>Cube</strong><small>Custom-sized object</small></span><span class="geometry-plus">+</span></button>
+          <button class="geometry-card" :disabled="!roomPoints.length" @click="selectTool('cube')"><span class="cube-icon">◇</span><span><strong>Cube</strong><small>Custom-sized object</small></span><span class="geometry-plus">+</span></button>
           <div class="structure-heading">WALL DETAILS</div>
-          <button class="geometry-card" @click="addItem('window')"><span class="detail-icon window-detail">↔</span><span><strong>Window</strong><small>110 × 12 cm</small></span><span class="geometry-plus">+</span></button>
-          <button class="geometry-card structure-card" @click="addItem('door')"><span class="detail-icon door-detail">⌒</span><span><strong>Door</strong><small>90 × 15 cm</small></span><span class="geometry-plus">+</span></button>
+          <button class="geometry-card" :disabled="!roomPoints.length" @click="addItem('window')"><span class="detail-icon window-detail">↔</span><span><strong>Window</strong><small>110 × 12 cm</small></span><span class="geometry-plus">+</span></button>
+          <button class="geometry-card structure-card" :disabled="!roomPoints.length" @click="addItem('door')"><span class="detail-icon door-detail">⌒</span><span><strong>Door</strong><small>90 × 15 cm</small></span><span class="geometry-plus">+</span></button>
           <div class="import-card import-planned" aria-disabled="true"><span class="import-icon">↥</span><span><strong>Import 3D model</strong><small>Model import coming soon</small></span></div>
         </div>
 
@@ -529,12 +1214,12 @@ watch([items, wallSegments, measurements, roomPoints], () => {
       <div class="toolbar-row">
         <div class="view-switch"><button :class="{ selected: view === '2d' }" @click="view = '2d'"><span class="view-2d-icon">▦</span>2D plan</button><button :class="{ selected: view === '3d' }" @click="view = '3d'"><span class="view-3d-icon">◇</span>3D view</button></div>
         <div v-if="view === '2d'" class="tool-actions">
-          <span class="tool-hint" v-if="activeTool === 'room'">Click room corners, then finish</span>
-          <span class="tool-hint" v-else-if="activeTool === 'wall'">Click two points to draw a wall</span>
+          <span class="tool-hint" v-if="activeTool === 'room'">10° angle snap · Shift for free angle · Click near start to close</span>
+          <span class="tool-hint" v-else-if="activeTool === 'addRoom'">Start and finish on an existing wall · Shift for free angles</span>
           <span class="tool-hint" v-else-if="activeTool === 'measure'">Click two points to measure</span>
           <button class="tool-button" :class="{ 'tool-active': activeTool === 'select' }" title="Select and move" @click="selectTool('select')"><svg viewBox="0 0 20 20"><path d="m5 3 10 8-5 .7-2.5 5L5 3Z"/></svg></button>
-          <button class="tool-button" :class="{ 'tool-active': activeTool === 'room' }" title="Draw a new room" @click="beginRoomDrawing"><svg viewBox="0 0 20 20"><path d="m4 5 7-2 5 4v8l-7 2-5-4V5Zm7-2v8m5-4-5 4m-7-6 7 2"/></svg></button>
-          <button class="tool-button" :class="{ 'tool-active': activeTool === 'wall' }" title="Draw wall" @click="selectTool('wall')"><svg viewBox="0 0 20 20"><path d="M4 5h12v10H4zM4 10h5m3 0h4"/></svg></button>
+          <button class="tool-button" title="Draw a new floorplan" aria-label="Draw a new floorplan" @click="beginRoomDrawing"><svg viewBox="0 0 20 20"><path d="m4 5 7-2 5 4v8l-7 2-5-4V5Zm7-2v8m5-4-5 4m-7-6 7 2"/></svg></button>
+          <button class="tool-button" :class="{ 'tool-active': activeTool === 'addRoom' }" title="Add room" aria-label="Add room" :disabled="!allRooms.length" @click="beginRoomAddition"><svg viewBox="0 0 20 20"><path d="M3 4h8v8H3zM11 8h6v8h-6zM6 7h2m6 5h2"/></svg></button>
           <button class="tool-button" :class="{ 'tool-active': activeTool === 'measure' }" title="Measure length" @click="selectTool('measure')"><svg viewBox="0 0 20 20"><path d="M4 14 14 4l3 3L7 17l-3-3Zm3-1 2 2m1-5 2 2m1-5 2 2"/></svg></button>
           <span class="toolbar-divider"></span>
           <button class="tool-button" :class="{ 'tool-active': showGrid }" title="Toggle grid" @click="showGrid = !showGrid"><svg viewBox="0 0 20 20"><path d="M4 4h12v12H4zM4 10h12M10 4v12"/></svg></button>
@@ -543,7 +1228,7 @@ watch([items, wallSegments, measurements, roomPoints], () => {
         </div>
       </div>
       <div class="canvas-area">
-        <div class="canvas-label"><span class="canvas-status"></span> {{ view === '2d' ? 'FLOOR PLAN' : 'INTERACTIVE 3D' }} <span class="label-divider">·</span> {{ view === '2d' ? 'LIVING ROOM' : 'DRAG TO ORBIT' }}</div>
+        <div class="canvas-label"><span class="canvas-status"></span> {{ view === '2d' ? 'FLOOR PLAN' : 'INTERACTIVE 3D' }} <span class="label-divider">·</span> {{ view === '2d' ? (allRooms.length > 1 ? `${allRooms.length} ROOMS` : 'LIVING ROOM') : 'DRAG TO ORBIT' }}</div>
         <div class="canvas-card" :class="{ 'immersive-card': view === '3d' }" @wheel="onCanvasWheel">
           <svg v-if="view === '2d'" class="plan-svg" :viewBox="planViewBox" @click="onCanvasClick" @pointermove="onCanvasPointerMove" @pointerup="stopDragging" @pointercancel="stopDragging" @lostpointercapture="stopDragging">
             <defs>
@@ -552,7 +1237,7 @@ watch([items, wallSegments, measurements, roomPoints], () => {
             </defs>
             <rect width="960" height="680" fill="#f7f6f2"/>
             <rect v-if="showGrid" width="960" height="680" fill="url(#grid)"/>
-            <polygon :points="roomPolygon" fill="#f5eee4" stroke="#c6b9a8" stroke-width="1.5"/>
+            <polygon v-for="(room, index) in allRooms" :key="`room-floor-${index}`" :points="room.map((point) => `${point.x},${point.y}`).join(' ')" fill="#f5eee4" stroke="#c6b9a8" stroke-width="1.5"/>
             <line v-for="edge in roomEdges" :key="`room-edge-${edge.id}`" :x1="edge.start.x" :y1="edge.start.y" :x2="edge.end.x" :y2="edge.end.y" stroke="#45443f" stroke-width="10" stroke-linecap="square"/>
             <g v-if="showDimensions" class="room-dimensions room-edge-dimensions">
               <text v-for="edge in roomEdges" :key="`room-dimension-${edge.id}`" :x="edge.label.x" :y="edge.label.y" text-anchor="middle" :transform="`rotate(${edge.labelAngle} ${edge.label.x} ${edge.label.y})`">{{ edge.length.toFixed(2) }} m</text>
@@ -568,9 +1253,17 @@ watch([items, wallSegments, measurements, roomPoints], () => {
               <text :x="(measurement.start.x + measurement.end.x) / 2" :y="(measurement.start.y + measurement.end.y) / 2 - 2" text-anchor="middle" class="measure-label">{{ formatLength(measurement.start, measurement.end) }}</text>
             </g>
             <g v-if="pendingPoint" class="pending-point"><circle :cx="pendingPoint.x" :cy="pendingPoint.y" r="6"/><circle :cx="pendingPoint.x" :cy="pendingPoint.y" r="12"/></g>
-            <g v-if="activeTool === 'room' && drawingRoomPoints.length">
+            <g v-if="(activeTool === 'room' || activeTool === 'addRoom') && (drawingRoomPoints.length || drawingCursor)">
               <polyline :points="[...drawingRoomPoints, ...(drawingCursor ? [drawingCursor] : [])].map((point) => `${point.x},${point.y}`).join(' ')" fill="none" stroke="#668371" stroke-width="4" stroke-dasharray="9 5" stroke-linecap="round" stroke-linejoin="round"/>
               <circle v-for="(point, index) in drawingRoomPoints" :key="`room-point-${index}`" :cx="point.x" :cy="point.y" r="7" fill="#fff" stroke="#668371" stroke-width="3"/>
+              <circle v-if="drawingCursor && drawingCursorSnapsToWall" :cx="drawingCursor.x" :cy="drawingCursor.y" r="9" fill="#e5f1e8" stroke="#4f8063" stroke-width="3"/>
+              <g v-if="roomDraftMeasurement" class="room-draft-measurement" pointer-events="none">
+                <line :x1="roomDraftMeasurement.start.x" :y1="roomDraftMeasurement.start.y" :x2="roomDraftMeasurement.end.x" :y2="roomDraftMeasurement.end.y" stroke="#4f8063" stroke-width="1.5" stroke-dasharray="5 4"/>
+                <rect :x="roomDraftMeasurement.label.x - 31" :y="roomDraftMeasurement.label.y - 12" width="62" height="22" rx="6" fill="#fff" stroke="#cbd9ce"/>
+                <text :x="roomDraftMeasurement.label.x" :y="roomDraftMeasurement.label.y + 3" text-anchor="middle" class="measure-label">{{ roomDraftMeasurement.text }}</text>
+              </g>
+              <text v-if="drawingCursorClosesRoom" :x="drawingCursor?.x" :y="(drawingCursor?.y || 0) - 14" text-anchor="middle" fill="#4f8063" font-size="10" font-weight="700">{{ activeTool === 'addRoom' ? 'FINISH ON WALL' : 'CLOSE ROOM' }}</text>
+              <text v-else-if="activeTool === 'addRoom' && !drawingRoomPoints.length && drawingCursorSnapsToWall" :x="drawingCursor?.x" :y="(drawingCursor?.y || 0) - 14" text-anchor="middle" fill="#4f8063" font-size="10" font-weight="700">START HERE</text>
             </g>
             <g v-for="item in items" :key="item.id" class="plan-item" :class="{ 'is-selected': selectedId === item.id, 'is-dragging': isDragging && selectedId === item.id }" :transform="`translate(${item.x} ${item.y}) rotate(${item.rotation})`" @pointerdown="itemPointerDown($event, item)" @click.stop="selectedId = item.id">
               <g v-if="item.kind === 'chair'" filter="url(#soft-shadow)">
@@ -583,11 +1276,23 @@ watch([items, wallSegments, measurements, roomPoints], () => {
                 <rect :x="-item.width / 2 + 7" :y="-item.depth / 2 + 7" :width="item.width - 14" :height="item.depth - 14" rx="5" fill="#c9aa86"/>
                 <path :d="`M${-item.width / 2 + 15} ${item.depth / 2 - 6}v13m${item.width - 30} -13v13`" stroke="#94734f" stroke-width="5" stroke-linecap="round"/>
               </g>
-              <g v-else-if="item.kind === 'cupboard' || item.kind === 'shelf'">
-                <rect :x="-item.width / 2" :y="-item.depth / 2" :width="item.width" :height="item.depth" rx="5" :fill="item.color || (item.kind === 'shelf' ? '#c5ae96' : '#99a08e')" stroke="#777c6c" stroke-width="1.5"/>
-                <line v-if="item.kind === 'cupboard'" y1="-10" y2="10" stroke="#e0e0d4" stroke-width="2"/>
-                <circle v-if="item.kind === 'cupboard'" cx="4" cy="0" r="1.5" fill="#777c6c"/>
-                <g v-if="item.kind === 'shelf'" stroke="#8d7964" stroke-width="1"><line :x1="-item.width / 2 + 5" :y1="-item.depth / 4" :x2="item.width / 2 - 5" :y2="-item.depth / 4"/><line :x1="-item.width / 2 + 5" :y1="item.depth / 4" :x2="item.width / 2 - 5" :y2="item.depth / 4"/></g>
+              <g v-else-if="item.kind === 'cupboard'">
+                <rect :x="-item.width / 2" :y="-item.depth / 2" :width="item.width" :height="item.depth" rx="5" :fill="item.color || '#99a08e'" stroke="#777c6c" stroke-width="1.5"/>
+                <line y1="-10" y2="10" stroke="#e0e0d4" stroke-width="2"/>
+                <circle cx="4" cy="0" r="1.5" fill="#777c6c"/>
+              </g>
+              <g v-else-if="item.kind === 'shelf'">
+                <rect :x="-item.width / 2" :y="-item.depth / 2" :width="item.width" :height="item.depth" rx="3" fill="#f5f0e7" fill-opacity=".72" stroke="#8d7964" stroke-width="1.5"/>
+                <g stroke="#a88c72" stroke-width="2">
+                  <line :x1="-item.width / 2 + 4" :y1="-item.depth / 4" :x2="item.width / 2 - 4" :y2="-item.depth / 4"/>
+                  <line :x1="-item.width / 2 + 4" :y1="item.depth / 4" :x2="item.width / 2 - 4" :y2="item.depth / 4"/>
+                </g>
+                <g fill="#8d7964">
+                  <circle :cx="-item.width / 2 + 3" :cy="-item.depth / 2 + 3" r="2"/>
+                  <circle :cx="item.width / 2 - 3" :cy="-item.depth / 2 + 3" r="2"/>
+                  <circle :cx="-item.width / 2 + 3" :cy="item.depth / 2 - 3" r="2"/>
+                  <circle :cx="item.width / 2 - 3" :cy="item.depth / 2 - 3" r="2"/>
+                </g>
               </g>
               <g v-else-if="item.kind === 'window'"><rect :x="-item.width / 2" y="-6" :width="item.width" height="12" rx="2" fill="#77b9c1" stroke="#3f8e98" stroke-width="2"/><path :d="`M${-item.width / 2 + 4} 0h${item.width - 8}`" stroke="#e9fbfb" stroke-width="2"/></g>
               <g v-else-if="item.kind === 'door'"><rect :x="-item.width / 2" y="-7" :width="item.width" height="14" rx="2" fill="#c98d65" stroke="#986746" stroke-width="1.5"/><circle :cx="item.width / 2 - 10" cy="0" r="2" fill="#f3dfbb"/></g>
@@ -596,16 +1301,34 @@ watch([items, wallSegments, measurements, roomPoints], () => {
                 <path :d="`M${-item.width / 2 + 8} ${-item.depth / 2 + 8}h${item.width - 16}v${item.depth - 16}h${-item.width + 16}z`" fill="none" stroke="#d7e1e7"/>
               </g>
               <rect v-if="selectedId === item.id" :x="-item.width / 2 - 6" :y="-item.depth / 2 - 6" :width="item.width + 12" :height="item.depth + 12" rx="12" fill="none" stroke="#668774" stroke-width="2" stroke-dasharray="4 3"/>
+              <g
+                v-if="selectedId === item.id && item.kind !== 'door' && item.kind !== 'window'"
+                class="rotation-handle"
+                :transform="`translate(${item.width / 2 + 14} ${-item.depth / 2 - 14}) rotate(${-item.rotation})`"
+                @pointerdown="rotationHandlePointerDown($event, item)"
+                @click.stop
+              >
+                <title>Drag to rotate · 10° steps · hold Shift for 1° steps</title>
+                <circle r="11" fill="#fff" stroke="#668774" stroke-width="1.5"/>
+                <path d="M-4.7-4.7a6.7 6.7 0 1 1-1.8 6.9M-6.2-6.4v3.8h3.8" fill="none" stroke="#668774" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              </g>
               <title>{{ item.name || itemLabel(item.kind) }} · {{ item.width }} × {{ item.depth }} cm</title>
             </g>
-            <text :x="roomBounds.x + roomBounds.width / 2" :y="roomBounds.y + roomBounds.height + 35" text-anchor="middle" class="room-caption">LIVING ROOM · {{ totalArea }} M²</text>
+            <g v-for="measurement in dragMeasurements" :key="measurement.id" class="drag-measurement" pointer-events="none">
+              <line :x1="measurement.start.x" :y1="measurement.start.y" :x2="measurement.end.x" :y2="measurement.end.y" stroke="#4f8063" stroke-width="1.5" stroke-dasharray="5 4"/>
+              <circle :cx="measurement.start.x" :cy="measurement.start.y" r="2.5" fill="#4f8063"/>
+              <circle :cx="measurement.end.x" :cy="measurement.end.y" r="2.5" fill="#4f8063"/>
+              <rect :x="measurement.label.x - 31" :y="measurement.label.y - 12" width="62" height="22" rx="6" fill="#fff" stroke="#cbd9ce"/>
+              <text :x="measurement.label.x" :y="measurement.label.y + 3" text-anchor="middle" class="measure-label">{{ measurement.text }}</text>
+            </g>
+            <text v-if="roomPoints.length" :x="roomBounds.x + roomBounds.width / 2" :y="roomBounds.y + roomBounds.height + 35" text-anchor="middle" class="room-caption">{{ allRooms.length }} {{ allRooms.length === 1 ? 'ROOM' : 'ROOMS' }} · {{ totalArea }} M²</text>
           </svg>
 
           <ClientOnly v-else>
             <RoomScene3D
               :items="items"
               :walls="wallSegments"
-              :room-points="roomPoints"
+              :rooms="allRooms"
               :room-width="roomBounds.width"
               :room-depth="roomBounds.height"
               :room-x="roomBounds.x"
@@ -614,11 +1337,11 @@ watch([items, wallSegments, measurements, roomPoints], () => {
               @select="selectedId = $event"
             />
           </ClientOnly>
-          <div v-if="activeTool === 'room'" class="room-draw-banner">
-            <div><strong>Draw your room</strong><span>Click each corner around the room. Add at least 3 corners.</span><small v-if="roomDrawingError">{{ roomDrawingError }}</small></div>
+          <div v-if="activeTool === 'room' || activeTool === 'addRoom'" class="room-draw-banner">
+            <div><strong>{{ activeTool === 'addRoom' ? 'Add a room' : 'Draw your first room or draw the outline of your flat' }}</strong><span>{{ activeTool === 'addRoom' ? 'Start on an existing wall, trace the new room, then finish on a wall.' : 'Click each corner around the floorplan. Add at least 3 corners.' }}</span><small v-if="roomDrawingError">{{ roomDrawingError }}</small></div>
             <span class="corner-count">{{ drawingRoomPoints.length }} corners</span>
             <button class="room-cancel-button" @click="cancelRoomDrawing">Cancel</button>
-            <button class="room-finish-button" :disabled="drawingRoomPoints.length < 3" @click="finishRoomDrawing">Finish room</button>
+            <button v-if="activeTool === 'room'" class="room-finish-button" :disabled="drawingRoomPoints.length < 3" @click="finishRoomDrawing">Finish room</button>
           </div>
           <template v-if="view === '2d'">
             <div class="canvas-compass"><span>N</span><svg viewBox="0 0 20 28"><path d="M10 2 16 25 10 20 4 25 10 2Z" fill="#628c75"/></svg></div>
@@ -637,5 +1360,16 @@ watch([items, wallSegments, measurements, roomPoints], () => {
       </aside>
       <div v-if="activeTool === 'cube' && view === '2d'" class="placement-tip">Click anywhere in the room to place your cube <button @click="selectTool('select')">Cancel</button></div>
     </section>
+    <div v-if="showNewFloorplanConfirmation" class="confirmation-backdrop" @click.self="cancelNewFloorplan">
+      <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="new-floorplan-title" aria-describedby="new-floorplan-description">
+        <span class="section-eyebrow">NEW FLOORPLAN</span>
+        <h2 id="new-floorplan-title">Start a new floorplan?</h2>
+        <p id="new-floorplan-description">Your current floorplan, including its room outline, furniture, walls, and measurements, will be cleared.</p>
+        <div class="confirmation-actions">
+          <button class="confirmation-cancel" @click="cancelNewFloorplan">Cancel</button>
+          <button class="confirmation-accept" @click="confirmNewFloorplan">Clear floorplan</button>
+        </div>
+      </section>
+    </div>
   </main>
 </template>

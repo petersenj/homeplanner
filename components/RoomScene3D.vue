@@ -20,7 +20,7 @@ type Point = { x: number; y: number }
 const props = defineProps<{
   items: RoomItem[]
   walls: Wall[]
-  roomPoints: Point[]
+  rooms: Point[][]
   roomWidth: number
   roomDepth: number
   roomX: number
@@ -45,7 +45,7 @@ let animationFrame = 0
 let raycaster: THREE.Raycaster | undefined
 let pointer: THREE.Vector2 | undefined
 let pickableObjects: THREE.Object3D[] = []
-let perimeterWalls: Array<{ group: THREE.Group; midpoint: THREE.Vector3; outward: THREE.Vector3 }> = []
+let perimeterWalls: Array<{ group: THREE.Group; midpoint: THREE.Vector3; outward: THREE.Vector3; alwaysVisible: boolean }> = []
 
 const roomWidthM = computed(() => props.roomWidth / 100)
 const roomDepthM = computed(() => props.roomDepth / 100)
@@ -93,34 +93,65 @@ function addRoom() {
   const depth = roomDepthM.value
   const wallHeight = 2.65
   const wallThickness = 0.12
-  const points = props.roomPoints.map((point) => roomPosition(point.x, point.y))
-  const shape = new THREE.Shape()
-  const first = points[0]
-  if (!first) return
-  shape.moveTo(first.x, -first.z)
-  for (const point of points.slice(1)) shape.lineTo(point.x, -point.z)
-  shape.closePath()
-  const floor = new THREE.Mesh(
-    new THREE.ShapeGeometry(shape),
-    material('#eae3d8', 0.96),
-  )
-  floor.rotation.x = -Math.PI / 2
-  floor.receiveShadow = true
-  floor.position.y = -0.025
-  content.add(floor)
-
-  const minX = Math.min(...points.map((point) => point.x))
-  const maxX = Math.max(...points.map((point) => point.x))
-  const minZ = Math.min(...points.map((point) => point.z))
-  const maxZ = Math.max(...points.map((point) => point.z))
-  const rectangular = points.length === 4 && points.every((point) =>
-    (Math.abs(point.x - minX) < 0.001 || Math.abs(point.x - maxX) < 0.001)
-    && (Math.abs(point.z - minZ) < 0.001 || Math.abs(point.z - maxZ) < 0.001))
-  if (rectangular) {
-    const grid = new THREE.GridHelper(Math.max(width, depth), Math.round(Math.max(width, depth) * 4), '#d9d1c5', '#e1dbd1')
-    grid.position.y = -0.015
-    content.add(grid)
+  const perimeterSegments: Array<{ roomIndex: number; start: Point; end: Point; key: string }> = []
+  const edgeCounts = new Map<string, number>()
+  const roomVertices = props.rooms.flat()
+  for (const [roomIndex, room] of props.rooms.entries()) {
+    for (let index = 0; index < room.length; index++) {
+      const start = room[index]!
+      const end = room[(index + 1) % room.length]!
+      const dx = end.x - start.x
+      const dy = end.y - start.y
+      const lengthSquared = dx * dx + dy * dy
+      const cuts = roomVertices.flatMap((point) => {
+        const t = ((point.x - start.x) * dx + (point.y - start.y) * dy) / (lengthSquared || 1)
+        const cross = Math.abs((point.x - start.x) * dy - (point.y - start.y) * dx)
+        return t > 0.001 && t < 0.999 && cross < 0.1 ? [{ point, t }] : []
+      }).sort((a, b) => a.t - b.t)
+      const splitPoints = [start, ...cuts.map((cut) => cut.point), end]
+      for (let segmentIndex = 0; segmentIndex < splitPoints.length - 1; segmentIndex++) {
+        const segmentStart = splitPoints[segmentIndex]!
+        const segmentEnd = splitPoints[segmentIndex + 1]!
+        const startKey = `${segmentStart.x.toFixed(2)},${segmentStart.y.toFixed(2)}`
+        const endKey = `${segmentEnd.x.toFixed(2)},${segmentEnd.y.toFixed(2)}`
+        const key = [startKey, endKey].sort().join('|')
+        perimeterSegments.push({ roomIndex, start: segmentStart, end: segmentEnd, key })
+        edgeCounts.set(key, (edgeCounts.get(key) ?? 0) + 1)
+      }
+    }
   }
+  const renderedEdges = new Set<string>()
+  let gridAdded = false
+  for (const [roomIndex, room] of props.rooms.entries()) {
+    const points = room.map((point) => roomPosition(point.x, point.y))
+    const shape = new THREE.Shape()
+    const first = points[0]
+    if (!first) continue
+    shape.moveTo(first.x, -first.z)
+    for (const point of points.slice(1)) shape.lineTo(point.x, -point.z)
+    shape.closePath()
+    const floor = new THREE.Mesh(
+      new THREE.ShapeGeometry(shape),
+      material('#eae3d8', 0.96),
+    )
+    floor.rotation.x = -Math.PI / 2
+    floor.receiveShadow = true
+    floor.position.y = -0.025
+    content.add(floor)
+
+    const minX = Math.min(...points.map((point) => point.x))
+    const maxX = Math.max(...points.map((point) => point.x))
+    const minZ = Math.min(...points.map((point) => point.z))
+    const maxZ = Math.max(...points.map((point) => point.z))
+    const rectangular = points.length === 4 && points.every((point) =>
+      (Math.abs(point.x - minX) < 0.001 || Math.abs(point.x - maxX) < 0.001)
+      && (Math.abs(point.z - minZ) < 0.001 || Math.abs(point.z - maxZ) < 0.001))
+    if (rectangular && !gridAdded) {
+      const grid = new THREE.GridHelper(Math.max(width, depth), Math.round(Math.max(width, depth) * 4), '#d9d1c5', '#e1dbd1')
+      grid.position.y = -0.015
+      content.add(grid)
+      gridAdded = true
+    }
 
   const signedArea = points.reduce((area, point, index) => {
     const next = points[(index + 1) % points.length]!
@@ -135,10 +166,14 @@ function addRoom() {
     length: number
     outwardX: number
     outwardZ: number
+    exterior: boolean
   }> = []
-  for (let index = 0; index < points.length; index++) {
-    const start = points[index]!
-    const end = points[(index + 1) % points.length]!
+  for (const segment of perimeterSegments.filter((entry) => entry.roomIndex === roomIndex)) {
+    const start = roomPosition(segment.start.x, segment.start.y)
+    const end = roomPosition(segment.end.x, segment.end.y)
+    const key = segment.key
+    if (renderedEdges.has(key)) continue
+    renderedEdges.add(key)
     const dx = end.x - start.x
     const dz = end.z - start.z
     const length = Math.hypot(dx, dz)
@@ -147,10 +182,10 @@ function addRoom() {
     const outwardZ = (signedArea >= 0 ? -dx : dx) / length
     const midpoint = { x: (start.x + end.x) / 2, z: (start.z + end.z) / 2 }
     const angle = -Math.atan2(dz, dx)
-    edges.push({ start, end, midpoint, angle, length, outwardX, outwardZ })
+    edges.push({ start, end, midpoint, angle, length, outwardX, outwardZ, exterior: edgeCounts.get(key) === 1 })
   }
 
-  const farEdges = edges.filter((edge) => edge.outwardX * cameraDirection.x + edge.outwardZ * cameraDirection.y <= 0.05)
+  const farEdges = edges.filter((edge) => edge.exterior && edge.outwardX * cameraDirection.x + edge.outwardZ * cameraDirection.y <= 0.05)
   const windowEdge = farEdges.length
     ? farEdges.reduce((longest, edge) => edge.length > longest.length ? edge : longest, farEdges[0]!)
     : undefined
@@ -200,7 +235,9 @@ function addRoom() {
       group: wallGroup,
       midpoint: new THREE.Vector3(edge.midpoint.x, wallHeight / 2, edge.midpoint.z),
       outward: new THREE.Vector3(edge.outwardX, 0, edge.outwardZ),
+      alwaysVisible: !edge.exterior,
     })
+  }
   }
 
   for (const wall of props.walls) {
@@ -265,26 +302,36 @@ function addFurniture(item: RoomItem) {
     addLegs(group, width, depth, Math.max(0.12, height - topThickness), color, 0.12)
     box(group, [width, topThickness, depth], [0, height - topThickness / 2, 0], color)
     box(group, [width * 0.92, 0.025, depth * 0.88], [0, height + 0.012, 0], '#c6a47e')
-  } else if (item.kind === 'cupboard' || item.kind === 'shelf') {
-    const shelfCount = item.kind === 'shelf' ? 4 : 2
+  } else if (item.kind === 'cupboard') {
     box(group, [width, height, depth], [0, height / 2, 0], color)
     box(group, [width * 0.88, height * 0.9, 0.025], [0, height / 2, depth / 2 + 0.014], '#d9d1c3')
-    if (item.kind === 'cupboard') {
-      box(group, [0.014, height * 0.88, 0.035], [0, height / 2, depth / 2 + 0.03], '#898d7e')
-      for (const px of [-1, 1]) {
-        const knob = new THREE.Mesh(new THREE.SphereGeometry(0.018, 10, 8), material('#e9e0ce'))
-        knob.position.set(px * 0.045, height / 2, depth / 2 + 0.052)
-        group.add(knob)
+    box(group, [0.014, height * 0.88, 0.035], [0, height / 2, depth / 2 + 0.03], '#898d7e')
+    for (const px of [-1, 1]) {
+      const knob = new THREE.Mesh(new THREE.SphereGeometry(0.018, 10, 8), material('#e9e0ce'))
+      knob.position.set(px * 0.045, height / 2, depth / 2 + 0.052)
+      group.add(knob)
+    }
+  } else if (item.kind === 'shelf') {
+    const shelfCount = 4
+    const supportWidth = Math.min(0.045, width * 0.12, depth * 0.12)
+    for (const px of [-1, 1]) {
+      for (const pz of [-1, 1]) {
+        box(
+          group,
+          [supportWidth, height, supportWidth],
+          [px * (width / 2 - supportWidth / 2), height / 2, pz * (depth / 2 - supportWidth / 2)],
+          color,
+        )
       }
     }
-    for (let index = 1; index < shelfCount; index++) {
-      const shelf = box(
+    for (let index = 0; index < shelfCount; index++) {
+      const shelfY = index * (height - 0.035) / (shelfCount - 1) + 0.0175
+      box(
         group,
-        [width * 0.9, 0.035, depth * 0.88],
-        [0, height * index / shelfCount, 0],
-        item.kind === 'shelf' ? '#dbc9b1' : '#8d9a82',
+        [Math.max(0.02, width - supportWidth * 2), 0.035, Math.max(0.02, depth - supportWidth * 2)],
+        [0, shelfY, 0],
+        '#dbc9b1',
       )
-      if (item.kind === 'shelf') shelf.position.z = -depth * 0.04
     }
   } else if (item.kind === 'window') {
     box(group, [width, height, 0.045], [0, height / 2 + 0.85, 0], '#75b8c1', {
@@ -341,6 +388,10 @@ function updatePerimeterWallVisibility() {
   camera.updateMatrixWorld()
   const cameraPosition = camera.getWorldPosition(new THREE.Vector3())
   for (const wall of perimeterWalls) {
+    if (wall.alwaysVisible) {
+      wall.group.visible = true
+      continue
+    }
     const cameraDirection = cameraPosition.clone().sub(wall.midpoint).setY(0).normalize()
     wall.group.visible = wall.outward.dot(cameraDirection) <= 0.05
   }
@@ -402,7 +453,7 @@ function onFullscreenChange() {
   window.requestAnimationFrame(resize)
 }
 
-watch(() => [props.items, props.walls, props.roomPoints, props.selectedId, props.roomWidth, props.roomDepth], updateScene, { deep: true })
+watch(() => [props.items, props.walls, props.rooms, props.selectedId, props.roomWidth, props.roomDepth], updateScene, { deep: true })
 watch(() => [props.roomWidth, props.roomDepth], resetCamera)
 
 onMounted(() => {

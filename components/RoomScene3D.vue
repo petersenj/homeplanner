@@ -15,10 +15,12 @@ type RoomItem = {
   color?: string
 }
 type Wall = { id: number; start: { x: number; y: number }; end: { x: number; y: number } }
+type Point = { x: number; y: number }
 
 const props = defineProps<{
   items: RoomItem[]
   walls: Wall[]
+  roomPoints: Point[]
   roomWidth: number
   roomDepth: number
   roomX: number
@@ -43,6 +45,7 @@ let animationFrame = 0
 let raycaster: THREE.Raycaster | undefined
 let pointer: THREE.Vector2 | undefined
 let pickableObjects: THREE.Object3D[] = []
+let perimeterWalls: Array<{ group: THREE.Group; midpoint: THREE.Vector3; outward: THREE.Vector3 }> = []
 
 const roomWidthM = computed(() => props.roomWidth / 100)
 const roomDepthM = computed(() => props.roomDepth / 100)
@@ -90,8 +93,15 @@ function addRoom() {
   const depth = roomDepthM.value
   const wallHeight = 2.65
   const wallThickness = 0.12
+  const points = props.roomPoints.map((point) => roomPosition(point.x, point.y))
+  const shape = new THREE.Shape()
+  const first = points[0]
+  if (!first) return
+  shape.moveTo(first.x, -first.z)
+  for (const point of points.slice(1)) shape.lineTo(point.x, -point.z)
+  shape.closePath()
   const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(width, depth),
+    new THREE.ShapeGeometry(shape),
     material('#eae3d8', 0.96),
   )
   floor.rotation.x = -Math.PI / 2
@@ -99,23 +109,99 @@ function addRoom() {
   floor.position.y = -0.025
   content.add(floor)
 
-  const grid = new THREE.GridHelper(Math.max(width, depth), Math.round(Math.max(width, depth) * 4), '#d9d1c5', '#e1dbd1')
-  grid.position.y = 0.002
-  content.add(grid)
+  const minX = Math.min(...points.map((point) => point.x))
+  const maxX = Math.max(...points.map((point) => point.x))
+  const minZ = Math.min(...points.map((point) => point.z))
+  const maxZ = Math.max(...points.map((point) => point.z))
+  const rectangular = points.length === 4 && points.every((point) =>
+    (Math.abs(point.x - minX) < 0.001 || Math.abs(point.x - maxX) < 0.001)
+    && (Math.abs(point.z - minZ) < 0.001 || Math.abs(point.z - maxZ) < 0.001))
+  if (rectangular) {
+    const grid = new THREE.GridHelper(Math.max(width, depth), Math.round(Math.max(width, depth) * 4), '#d9d1c5', '#e1dbd1')
+    grid.position.y = -0.015
+    content.add(grid)
+  }
 
-  box(content, [width + wallThickness, wallHeight, wallThickness], [0, wallHeight / 2, -depth / 2], '#e4ded4')
-  box(content, [wallThickness, wallHeight, depth + wallThickness], [-width / 2, wallHeight / 2, 0], '#d8d1c7')
+  const signedArea = points.reduce((area, point, index) => {
+    const next = points[(index + 1) % points.length]!
+    return area + point.x * next.z - next.x * point.z
+  }, 0) / 2
+  const cameraDirection = new THREE.Vector2(1, 1).normalize()
+  const edges: Array<{
+    start: { x: number; z: number }
+    end: { x: number; z: number }
+    midpoint: { x: number; z: number }
+    angle: number
+    length: number
+    outwardX: number
+    outwardZ: number
+  }> = []
+  for (let index = 0; index < points.length; index++) {
+    const start = points[index]!
+    const end = points[(index + 1) % points.length]!
+    const dx = end.x - start.x
+    const dz = end.z - start.z
+    const length = Math.hypot(dx, dz)
+    if (length < 0.02) continue
+    const outwardX = (signedArea >= 0 ? dz : -dz) / length
+    const outwardZ = (signedArea >= 0 ? -dx : dx) / length
+    const midpoint = { x: (start.x + end.x) / 2, z: (start.z + end.z) / 2 }
+    const angle = -Math.atan2(dz, dx)
+    edges.push({ start, end, midpoint, angle, length, outwardX, outwardZ })
+  }
 
-  const windowX = -width / 2 + 1.05
-  box(content, [1.1, 1.12, 0.035], [windowX, 1.72, -depth / 2 + 0.05], '#84c3c9', {
-    transparent: true,
-    opacity: 0.72,
-    roughness: 0.22,
-    metalness: 0.08,
-    castShadow: false,
-  })
-  box(content, [1.16, 0.055, 0.07], [windowX, 1.72, -depth / 2 + 0.06], '#f5f2ec', { castShadow: false })
-  box(content, [0.045, 1.16, 0.07], [windowX, 1.72, -depth / 2 + 0.06], '#f5f2ec', { castShadow: false })
+  const farEdges = edges.filter((edge) => edge.outwardX * cameraDirection.x + edge.outwardZ * cameraDirection.y <= 0.05)
+  const windowEdge = farEdges.length
+    ? farEdges.reduce((longest, edge) => edge.length > longest.length ? edge : longest, farEdges[0]!)
+    : undefined
+
+  const sillHeight = 1.22
+  const windowHeight = 1.08
+  const headerHeight = wallHeight - sillHeight - windowHeight
+  const openingWidth = windowEdge ? Math.min(1.25, windowEdge.length * 0.6) : 0
+  for (const edge of edges) {
+    const wallGroup = new THREE.Group()
+    wallGroup.position.set(edge.midpoint.x, 0, edge.midpoint.z)
+    wallGroup.rotation.y = edge.angle
+    content.add(wallGroup)
+
+    if (edge === windowEdge && openingWidth > 0) {
+      const sideWidth = Math.max(0, (edge.length - openingWidth) / 2)
+      if (sideWidth > 0.001) {
+        box(wallGroup, [sideWidth, wallHeight, wallThickness], [-(openingWidth + sideWidth) / 2, wallHeight / 2, 0], '#ddd6cb')
+        box(wallGroup, [sideWidth, wallHeight, wallThickness], [(openingWidth + sideWidth) / 2, wallHeight / 2, 0], '#ddd6cb')
+      }
+      box(wallGroup, [openingWidth, sillHeight, wallThickness], [0, sillHeight / 2, 0], '#ddd6cb')
+      if (headerHeight > 0.001) {
+        box(wallGroup, [openingWidth, headerHeight, wallThickness], [0, sillHeight + windowHeight + headerHeight / 2, 0], '#ddd6cb')
+      }
+
+      const localZAxis = { x: Math.sin(edge.angle), z: Math.cos(edge.angle) }
+      const inwardZ = localZAxis.x * -edge.outwardX + localZAxis.z * -edge.outwardZ >= 0 ? 1 : -1
+      const openingFaceZ = inwardZ * (wallThickness / 2 + 0.012)
+      const glass = box(
+        wallGroup,
+        [openingWidth - 0.08, windowHeight - 0.08, 0.035],
+        [0, sillHeight + windowHeight / 2, openingFaceZ],
+        '#84c3c9',
+        { transparent: true, opacity: 0.72, roughness: 0.22, metalness: 0.08, castShadow: false },
+      )
+      glass.material.side = THREE.DoubleSide
+      box(wallGroup, [openingWidth, 0.045, 0.07], [0, sillHeight, openingFaceZ], '#f5f2ec', { castShadow: false })
+      box(wallGroup, [openingWidth, 0.045, 0.07], [0, sillHeight + windowHeight, openingFaceZ], '#f5f2ec', { castShadow: false })
+      box(wallGroup, [0.045, windowHeight, 0.07], [-openingWidth / 2, sillHeight + windowHeight / 2, openingFaceZ], '#f5f2ec', { castShadow: false })
+      box(wallGroup, [0.045, windowHeight, 0.07], [openingWidth / 2, sillHeight + windowHeight / 2, openingFaceZ], '#f5f2ec', { castShadow: false })
+      box(wallGroup, [0.035, windowHeight - 0.08, 0.075], [0, sillHeight + windowHeight / 2, openingFaceZ], '#f5f2ec', { castShadow: false })
+    } else {
+      box(wallGroup, [edge.length + wallThickness * 0.25, wallHeight, wallThickness], [0, wallHeight / 2, 0], '#ddd6cb')
+    }
+
+    perimeterWalls.push({
+      group: wallGroup,
+      midpoint: new THREE.Vector3(edge.midpoint.x, wallHeight / 2, edge.midpoint.z),
+      outward: new THREE.Vector3(edge.outwardX, 0, edge.outwardZ),
+    })
+  }
 
   for (const wall of props.walls) {
     const start = roomPosition(wall.start.x, wall.start.y)
@@ -236,6 +322,7 @@ function updateScene() {
   if (!content) return
   disposeGroup(content)
   pickableObjects = []
+  perimeterWalls = []
   addRoom()
   for (const item of props.items) addFurniture(item)
   if (props.selectedId !== null) {
@@ -246,6 +333,16 @@ function updateScene() {
       outline.userData.decorative = true
       content.add(outline)
     }
+  }
+}
+
+function updatePerimeterWallVisibility() {
+  if (!camera || perimeterWalls.length === 0) return
+  camera.updateMatrixWorld()
+  const cameraPosition = camera.getWorldPosition(new THREE.Vector3())
+  for (const wall of perimeterWalls) {
+    const cameraDirection = cameraPosition.clone().sub(wall.midpoint).setY(0).normalize()
+    wall.group.visible = wall.outward.dot(cameraDirection) <= 0.05
   }
 }
 
@@ -263,6 +360,7 @@ function resize() {
 function render() {
   if (renderer && scene && camera && controls) {
     controls.update()
+    updatePerimeterWallVisibility()
     renderer.render(scene, camera)
   }
   animationFrame = window.requestAnimationFrame(render)
@@ -304,7 +402,7 @@ function onFullscreenChange() {
   window.requestAnimationFrame(resize)
 }
 
-watch(() => [props.items, props.walls, props.selectedId, props.roomWidth, props.roomDepth], updateScene, { deep: true })
+watch(() => [props.items, props.walls, props.roomPoints, props.selectedId, props.roomWidth, props.roomDepth], updateScene, { deep: true })
 watch(() => [props.roomWidth, props.roomDepth], resetCamera)
 
 onMounted(() => {

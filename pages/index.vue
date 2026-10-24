@@ -19,16 +19,26 @@ type PlanItem = {
 }
 type Wall = { id: number; start: Point; end: Point }
 type Measurement = { id: number; start: Point; end: Point }
+type RoomEdge = { id: number; start: Point; end: Point; label: Point; labelAngle: number; length: number }
 
 const SCALE = 100
 const VIEW_WIDTH = 960
 const VIEW_HEIGHT = 680
-const room = { x: 125, y: 95, width: 650, height: 480 }
+const defaultRoomPoints: Point[] = [
+  { x: 125, y: 95 },
+  { x: 775, y: 95 },
+  { x: 775, y: 575 },
+  { x: 125, y: 575 },
+]
 const view = ref<'2d' | '3d'>('2d')
-const activeTool = ref<'select' | 'wall' | 'measure' | 'window' | 'door' | 'cube' | 'furniture'>('select')
+const activeTool = ref<'select' | 'room' | 'wall' | 'measure' | 'window' | 'door' | 'cube' | 'furniture'>('select')
 const selectedCategory = ref('All items')
 const selectedId = ref<number | null>(null)
 const pendingPoint = ref<Point | null>(null)
+const roomPoints = ref<Point[]>(defaultRoomPoints.map((point) => ({ ...point })))
+const drawingRoomPoints = ref<Point[]>([])
+const drawingCursor = ref<Point | null>(null)
+const roomDrawingError = ref('')
 const zoom = ref(1)
 const wallSegments = ref<Wall[]>([])
 const measurements = ref<Measurement[]>([])
@@ -37,6 +47,8 @@ const showGrid = ref(true)
 const showDimensions = ref(true)
 const sidebarOpen = ref(true)
 const isDragging = ref(false)
+const activePointerId = ref<number | null>(null)
+const dragOffset = ref<Point>({ x: 0, y: 0 })
 const items = ref<PlanItem[]>([
   { id: 1, kind: 'table', x: 395, y: 305, width: 150, depth: 90, height: 75, rotation: 0 },
   { id: 2, kind: 'chair', x: 345, y: 280, width: 48, depth: 48, height: 88, rotation: 0 },
@@ -58,12 +70,113 @@ const categoryItems = computed(() => selectedCategory.value === 'All items'
   : catalog)
 const selectedItem = computed(() => items.value.find((item) => item.id === selectedId.value) ?? null)
 const placedCount = computed(() => items.value.length)
-const totalArea = ((room.width / SCALE) * (room.height / SCALE)).toFixed(1)
+const roomBounds = computed(() => {
+  const xs = roomPoints.value.map((point) => point.x)
+  const ys = roomPoints.value.map((point) => point.y)
+  const x = Math.min(...xs)
+  const y = Math.min(...ys)
+  return {
+    x,
+    y,
+    width: Math.max(...xs) - x,
+    height: Math.max(...ys) - y,
+  }
+})
+const roomArea = computed(() => roomAreaFor(roomPoints.value))
+const roomCenter = computed(() => {
+  let x = 0
+  let y = 0
+  let crossSum = 0
+  for (let index = 0; index < roomPoints.value.length; index++) {
+    const point = roomPoints.value[index]!
+    const next = roomPoints.value[(index + 1) % roomPoints.value.length]!
+    const cross = point.x * next.y - next.x * point.y
+    crossSum += cross
+    x += (point.x + next.x) * cross
+    y += (point.y + next.y) * cross
+  }
+  if (Math.abs(crossSum) < 0.001) return { ...roomBounds.value, x: roomBounds.value.x + roomBounds.value.width / 2, y: roomBounds.value.y + roomBounds.value.height / 2 }
+  return { x: x / (3 * crossSum), y: y / (3 * crossSum) }
+})
+const totalArea = computed(() => (roomArea.value / SCALE ** 2).toFixed(1))
+const roomPolygon = computed(() => roomPoints.value.map((point) => `${point.x},${point.y}`).join(' '))
+const roomEdges = computed<RoomEdge[]>(() => {
+  const signedArea = roomPoints.value.reduce((area, point, index) => {
+    const next = roomPoints.value[(index + 1) % roomPoints.value.length]!
+    return area + point.x * next.y - next.x * point.y
+  }, 0) / 2
+  const orientation = Math.sign(signedArea) || 1
+  return roomPoints.value.map((start, index) => {
+    const end = roomPoints.value[(index + 1) % roomPoints.value.length]!
+    const dx = end.x - start.x
+    const dy = end.y - start.y
+    const length = Math.hypot(dx, dy)
+    const offset = 20
+    const labelAngle = Math.atan2(dy, dx) * 180 / Math.PI
+    const readableAngle = labelAngle > 90 || labelAngle < -90 ? labelAngle + 180 : labelAngle
+    return {
+      id: index,
+      start,
+      end,
+      label: {
+        x: (start.x + end.x) / 2 + (dy / (length || 1)) * offset * orientation,
+        y: (start.y + end.y) / 2 - (dx / (length || 1)) * offset * orientation,
+      },
+      labelAngle: readableAngle,
+      length: length / SCALE,
+    }
+  })
+})
 const planViewBox = computed(() => {
   const width = VIEW_WIDTH / zoom.value
   const height = VIEW_HEIGHT / zoom.value
   return `${(VIEW_WIDTH - width) / 2} ${(VIEW_HEIGHT - height) / 2} ${width} ${height}`
 })
+
+function isPointInsideRoom(point: Point) {
+  let inside = false
+  for (let index = 0, previous = roomPoints.value.length - 1; index < roomPoints.value.length; previous = index++) {
+    const current = roomPoints.value[index]!
+    const last = roomPoints.value[previous]!
+    const crosses = (current.y > point.y) !== (last.y > point.y)
+      && point.x < ((last.x - current.x) * (point.y - current.y)) / (last.y - current.y) + current.x
+    if (crosses) inside = !inside
+  }
+  return inside
+}
+
+function orientation(a: Point, b: Point, c: Point) {
+  const value = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+  return Math.abs(value) < 0.001 ? 0 : value > 0 ? 1 : 2
+}
+
+function segmentsIntersect(a: Point, b: Point, c: Point, d: Point) {
+  const abC = orientation(a, b, c)
+  const abD = orientation(a, b, d)
+  const cdA = orientation(c, d, a)
+  const cdB = orientation(c, d, b)
+  const onSegment = (start: Point, point: Point, end: Point) => point.x >= Math.min(start.x, end.x) - 0.001
+    && point.x <= Math.max(start.x, end.x) + 0.001
+    && point.y >= Math.min(start.y, end.y) - 0.001
+    && point.y <= Math.max(start.y, end.y) + 0.001
+  if (abC !== abD && cdA !== cdB) return true
+  return (abC === 0 && onSegment(a, c, b))
+    || (abD === 0 && onSegment(a, d, b))
+    || (cdA === 0 && onSegment(c, a, d))
+    || (cdB === 0 && onSegment(c, b, d))
+}
+
+function isSimpleRoom(points: Point[]) {
+  for (let first = 0; first < points.length; first++) {
+    const firstEnd = (first + 1) % points.length
+    for (let second = first + 1; second < points.length; second++) {
+      const secondEnd = (second + 1) % points.length
+      if (first === second || firstEnd === second || secondEnd === first) continue
+      if (segmentsIntersect(points[first]!, points[firstEnd]!, points[second]!, points[secondEnd]!)) return false
+    }
+  }
+  return true
+}
 
 function dimensions(kind: FurnitureKind) {
   const sizes: Record<FurnitureKind, [number, number, number]> = {
@@ -81,11 +194,12 @@ function dimensions(kind: FurnitureKind) {
 function addItem(kind: FurnitureKind, at?: Point) {
   const [width, depth, height] = dimensions(kind)
   const id = nextId.value++
-  const defaultPoint = kind === 'window'
-    ? { x: room.x + room.width / 2, y: room.y + 15 }
-    : kind === 'door'
-      ? { x: room.x + room.width - 15, y: room.y + room.height * 0.72 }
-      : { x: room.x + room.width / 2, y: room.y + room.height / 2 }
+  const longestEdge = roomEdges.value.reduce((longest, edge) => edge.length > longest.length ? edge : longest, roomEdges.value[0]!)
+  const mountingEdge = kind === 'door' ? roomEdges.value[1] ?? longestEdge : longestEdge
+  const edgeAngle = Math.atan2(mountingEdge.end.y - mountingEdge.start.y, mountingEdge.end.x - mountingEdge.start.x) * 180 / Math.PI
+  const defaultPoint = kind === 'window' || kind === 'door'
+    ? { x: (mountingEdge.start.x + mountingEdge.end.x) / 2, y: (mountingEdge.start.y + mountingEdge.end.y) / 2 }
+    : roomCenter.value
   const item: PlanItem = {
     id,
     kind,
@@ -94,7 +208,7 @@ function addItem(kind: FurnitureKind, at?: Point) {
     width,
     depth,
     height,
-    rotation: kind === 'door' ? 90 : 0,
+    rotation: kind === 'window' || kind === 'door' ? edgeAngle : 0,
   }
   items.value.push(item)
   selectedId.value = id
@@ -108,17 +222,27 @@ function selectTool(tool: typeof activeTool.value) {
   selectedId.value = null
 }
 
-function svgPoint(event: MouseEvent): Point {
-  const svg = event.currentTarget as SVGSVGElement
+function svgPoint(event: MouseEvent | PointerEvent, svg = event.currentTarget as SVGSVGElement): Point {
   const matrix = svg.getScreenCTM()
-  if (!matrix) return { x: room.x + room.width / 2, y: room.y + room.height / 2 }
+  if (!matrix) return { ...roomCenter.value }
   const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse())
   return { x: point.x, y: point.y }
 }
 
 function onCanvasClick(event: MouseEvent) {
   if ((event.target as Element).closest('.plan-item')) return
-  const point = svgPoint(event)
+  const rawPoint = svgPoint(event)
+  const point = {
+    x: Math.max(20, Math.min(VIEW_WIDTH - 20, Math.round(rawPoint.x / 10) * 10)),
+    y: Math.max(20, Math.min(VIEW_HEIGHT - 20, Math.round(rawPoint.y / 10) * 10)),
+  }
+  if (activeTool.value === 'room') {
+    const previous = drawingRoomPoints.value.at(-1)
+    if (previous && Math.hypot(previous.x - point.x, previous.y - point.y) < 10) return
+    roomDrawingError.value = ''
+    drawingRoomPoints.value.push(point)
+    return
+  }
   if (activeTool.value === 'wall') {
     if (!pendingPoint.value) pendingPoint.value = point
     else {
@@ -142,25 +266,91 @@ function onCanvasClick(event: MouseEvent) {
   selectedId.value = null
 }
 
-function itemClick(event: MouseEvent, item: PlanItem) {
+function itemPointerDown(event: PointerEvent, item: PlanItem) {
   event.stopPropagation()
   selectedId.value = item.id
   if (activeTool.value !== 'select') return
+  if (!event.isPrimary || event.button !== 0) return
+  const svg = (event.currentTarget as SVGGElement).ownerSVGElement
+  if (svg) {
+    const point = svgPoint(event, svg)
+    dragOffset.value = { x: item.x - point.x, y: item.y - point.y }
+  }
+  if (svg?.setPointerCapture) svg.setPointerCapture(event.pointerId)
+  activePointerId.value = event.pointerId
   isDragging.value = true
 }
 
-function onCanvasMove(event: MouseEvent) {
-  if (!isDragging.value || selectedId.value === null) return
-  const point = svgPoint(event)
-  const item = items.value.find((entry) => entry.id === selectedId.value)
-  if (item) {
-    item.x = Math.max(room.x + 18, Math.min(room.x + room.width - 18, point.x))
-    item.y = Math.max(room.y + 18, Math.min(room.y + room.height - 18, point.y))
+function onCanvasPointerMove(event: PointerEvent) {
+  if (activeTool.value === 'room' && drawingRoomPoints.value.length > 0) {
+    drawingCursor.value = svgPoint(event)
+  }
+  if (!isDragging.value || selectedId.value === null || activePointerId.value !== event.pointerId) return
+  const pointerPoint = svgPoint(event)
+  const point = { x: pointerPoint.x + dragOffset.value.x, y: pointerPoint.y + dragOffset.value.y }
+  if (isPointInsideRoom(point)) {
+    const item = items.value.find((entry) => entry.id === selectedId.value)
+    if (item) {
+      item.x = point.x
+      item.y = point.y
+    }
   }
 }
 
 function stopDragging() {
   isDragging.value = false
+  activePointerId.value = null
+}
+
+function beginRoomDrawing() {
+  if (items.value.length || wallSegments.value.length || measurements.value.length) {
+    if (!window.confirm('Draw a new room? This will replace the current room and remove its furniture, walls, and measurements.')) return
+  }
+  drawingRoomPoints.value = []
+  drawingCursor.value = null
+  roomDrawingError.value = ''
+  pendingPoint.value = null
+  selectedId.value = null
+  activeTool.value = 'room'
+  view.value = '2d'
+}
+
+function finishRoomDrawing() {
+  const points = drawingRoomPoints.value
+  if (points.length < 3) {
+    roomDrawingError.value = 'Add at least three corners to close the room.'
+    return
+  }
+  if (roomAreaFor(points) < 100) {
+    roomDrawingError.value = 'The room is too small. Draw a larger outline.'
+    return
+  }
+  if (!isSimpleRoom(points)) {
+    roomDrawingError.value = 'Room edges cannot cross. Adjust the outline and try again.'
+    return
+  }
+  roomPoints.value = points.map((point) => ({ ...point }))
+  items.value = []
+  wallSegments.value = []
+  measurements.value = []
+  drawingRoomPoints.value = []
+  drawingCursor.value = null
+  roomDrawingError.value = ''
+  activeTool.value = 'select'
+}
+
+function roomAreaFor(points: Point[]) {
+  return Math.abs(points.reduce((area, point, index) => {
+    const next = points[(index + 1) % points.length]!
+    return area + point.x * next.y - next.x * point.y
+  }, 0) / 2)
+}
+
+function cancelRoomDrawing() {
+  drawingRoomPoints.value = []
+  drawingCursor.value = null
+  roomDrawingError.value = ''
+  activeTool.value = 'select'
 }
 
 function addCatalogItem(kind: FurnitureKind) {
@@ -191,7 +381,12 @@ function exportPlan() {
   const plan = {
     name: 'Living room',
     units: 'cm',
-    room: { width: room.width, depth: room.height },
+    room: {
+      width: roomBounds.value.width,
+      depth: roomBounds.value.height,
+      points: roomPoints.value,
+      area: roomArea.value,
+    },
     items: items.value,
     walls: wallSegments.value,
     measurements: measurements.value,
@@ -230,15 +425,17 @@ function clearPlan() {
 }
 
 onMounted(() => {
-  window.addEventListener('mouseup', stopDragging)
+  window.addEventListener('pointerup', stopDragging)
+  window.addEventListener('pointercancel', stopDragging)
   const savedPlan = window.localStorage.getItem('roomwise-plan-v1')
   if (savedPlan) {
     try {
-      const plan = JSON.parse(savedPlan) as { items?: PlanItem[]; walls?: Wall[]; measurements?: Measurement[] }
+      const plan = JSON.parse(savedPlan) as { items?: PlanItem[]; walls?: Wall[]; measurements?: Measurement[]; roomPoints?: Point[] }
       if (Array.isArray(plan.items) && Array.isArray(plan.walls) && Array.isArray(plan.measurements)) {
         items.value = plan.items
         wallSegments.value = plan.walls
         measurements.value = plan.measurements
+        if (Array.isArray(plan.roomPoints) && plan.roomPoints.length >= 3) roomPoints.value = plan.roomPoints
         nextId.value = Math.max(10, ...items.value.map((item) => item.id + 1), ...wallSegments.value.map((wall) => wall.id + 1), ...measurements.value.map((measurement) => measurement.id + 1))
       } else {
         console.warn('Saved room plan has an invalid structure and was not restored.')
@@ -248,13 +445,17 @@ onMounted(() => {
     }
   }
 })
-onBeforeUnmount(() => window.removeEventListener('mouseup', stopDragging))
-watch([items, wallSegments, measurements], () => {
+onBeforeUnmount(() => {
+  window.removeEventListener('pointerup', stopDragging)
+  window.removeEventListener('pointercancel', stopDragging)
+})
+watch([items, wallSegments, measurements, roomPoints], () => {
   if (import.meta.client) {
     window.localStorage.setItem('roomwise-plan-v1', JSON.stringify({
       items: items.value,
       walls: wallSegments.value,
       measurements: measurements.value,
+      roomPoints: roomPoints.value,
     }))
   }
 }, { deep: true })
@@ -274,9 +475,9 @@ watch([items, wallSegments, measurements], () => {
         </div>
 
         <div class="sidebar-section room-section">
-          <div class="section-heading"><span class="section-eyebrow">ROOMS</span>          <button class="icon-button add-room" aria-label="Start new room" title="Start new room" @click="clearPlan">+</button></div>
+          <div class="section-heading"><span class="section-eyebrow">ROOMS</span><button class="icon-button add-room" aria-label="Draw a new room" title="Draw a new room" @click="beginRoomDrawing">+</button></div>
           <button class="room-row active-room"><span class="room-dot"></span><span>Living room</span><span class="room-area">{{ totalArea }} m²</span></button>
-          <button class="room-row muted-room" @click="clearPlan"><span class="room-dot empty-dot"></span><span>+ Start new room</span></button>
+          <button class="room-row muted-room" @click="beginRoomDrawing"><span class="room-dot empty-dot"></span><span>+ Draw a new room</span></button>
         </div>
 
         <div class="sidebar-section furniture-section">
@@ -328,9 +529,11 @@ watch([items, wallSegments, measurements], () => {
       <div class="toolbar-row">
         <div class="view-switch"><button :class="{ selected: view === '2d' }" @click="view = '2d'"><span class="view-2d-icon">▦</span>2D plan</button><button :class="{ selected: view === '3d' }" @click="view = '3d'"><span class="view-3d-icon">◇</span>3D view</button></div>
         <div v-if="view === '2d'" class="tool-actions">
-          <span class="tool-hint" v-if="activeTool === 'wall'">Click two points to draw a wall</span>
+          <span class="tool-hint" v-if="activeTool === 'room'">Click room corners, then finish</span>
+          <span class="tool-hint" v-else-if="activeTool === 'wall'">Click two points to draw a wall</span>
           <span class="tool-hint" v-else-if="activeTool === 'measure'">Click two points to measure</span>
           <button class="tool-button" :class="{ 'tool-active': activeTool === 'select' }" title="Select and move" @click="selectTool('select')"><svg viewBox="0 0 20 20"><path d="m5 3 10 8-5 .7-2.5 5L5 3Z"/></svg></button>
+          <button class="tool-button" :class="{ 'tool-active': activeTool === 'room' }" title="Draw a new room" @click="beginRoomDrawing"><svg viewBox="0 0 20 20"><path d="m4 5 7-2 5 4v8l-7 2-5-4V5Zm7-2v8m5-4-5 4m-7-6 7 2"/></svg></button>
           <button class="tool-button" :class="{ 'tool-active': activeTool === 'wall' }" title="Draw wall" @click="selectTool('wall')"><svg viewBox="0 0 20 20"><path d="M4 5h12v10H4zM4 10h5m3 0h4"/></svg></button>
           <button class="tool-button" :class="{ 'tool-active': activeTool === 'measure' }" title="Measure length" @click="selectTool('measure')"><svg viewBox="0 0 20 20"><path d="M4 14 14 4l3 3L7 17l-3-3Zm3-1 2 2m1-5 2 2m1-5 2 2"/></svg></button>
           <span class="toolbar-divider"></span>
@@ -342,34 +545,21 @@ watch([items, wallSegments, measurements], () => {
       <div class="canvas-area">
         <div class="canvas-label"><span class="canvas-status"></span> {{ view === '2d' ? 'FLOOR PLAN' : 'INTERACTIVE 3D' }} <span class="label-divider">·</span> {{ view === '2d' ? 'LIVING ROOM' : 'DRAG TO ORBIT' }}</div>
         <div class="canvas-card" :class="{ 'immersive-card': view === '3d' }" @wheel="onCanvasWheel">
-          <svg v-if="view === '2d'" class="plan-svg" :viewBox="planViewBox" @click="onCanvasClick" @mousemove="onCanvasMove">
+          <svg v-if="view === '2d'" class="plan-svg" :viewBox="planViewBox" @click="onCanvasClick" @pointermove="onCanvasPointerMove" @pointerup="stopDragging" @pointercancel="stopDragging" @lostpointercapture="stopDragging">
             <defs>
               <pattern id="grid" width="25" height="25" patternUnits="userSpaceOnUse"><path d="M 25 0 L 0 0 0 25" fill="none" stroke="#e9e7e1" stroke-width="0.8"/></pattern>
               <filter id="soft-shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#443a2e" flood-opacity=".09"/></filter>
             </defs>
             <rect width="960" height="680" fill="#f7f6f2"/>
             <rect v-if="showGrid" width="960" height="680" fill="url(#grid)"/>
-            <rect :x="room.x" :y="room.y" :width="room.width" :height="room.height" fill="#f5eee4" stroke="#45443f" stroke-width="10"/>
-            <rect :x="room.x + 8" :y="room.y + 8" :width="room.width - 16" :height="room.height - 16" fill="none" stroke="#c6b9a8" stroke-width="1.5"/>
-            <line :x1="room.x + 50" :y1="room.y" :x2="room.x + 160" :y2="room.y" stroke="#75b7bd" stroke-width="13"/>
-            <line :x1="room.x + 50" :y1="room.y - 6" :x2="room.x + 160" :y2="room.y - 6" stroke="#f7f6f2" stroke-width="3"/>
-            <line :x1="room.x + 50" :y1="room.y + 6" :x2="room.x + 160" :y2="room.y + 6" stroke="#f7f6f2" stroke-width="3"/>
-            <line :x1="room.x + room.width" :y1="room.y + 310" :x2="room.x + room.width" :y2="room.y + 400" stroke="#f7f6f2" stroke-width="13"/>
-            <path :d="`M ${room.x + room.width} ${room.y + 400} A 90 90 0 0 0 ${room.x + room.width - 90} ${room.y + 310}`" fill="none" stroke="#c98d65" stroke-width="2"/>
-            <line :x1="room.x + room.width" :y1="room.y + 310" :x2="room.x + room.width - 90" :y2="room.y + 310" stroke="#c98d65" stroke-width="3"/>
+            <polygon :points="roomPolygon" fill="#f5eee4" stroke="#c6b9a8" stroke-width="1.5"/>
+            <line v-for="edge in roomEdges" :key="`room-edge-${edge.id}`" :x1="edge.start.x" :y1="edge.start.y" :x2="edge.end.x" :y2="edge.end.y" stroke="#45443f" stroke-width="10" stroke-linecap="square"/>
+            <g v-if="showDimensions" class="room-dimensions room-edge-dimensions">
+              <text v-for="edge in roomEdges" :key="`room-dimension-${edge.id}`" :x="edge.label.x" :y="edge.label.y" text-anchor="middle" :transform="`rotate(${edge.labelAngle} ${edge.label.x} ${edge.label.y})`">{{ edge.length.toFixed(2) }} m</text>
+            </g>
             <g v-for="wall in wallSegments" :key="`wall-${wall.id}`">
               <line :x1="wall.start.x" :y1="wall.start.y" :x2="wall.end.x" :y2="wall.end.y" stroke="#45443f" stroke-width="10" stroke-linecap="square"/>
               <line :x1="wall.start.x" :y1="wall.start.y" :x2="wall.end.x" :y2="wall.end.y" stroke="#c6b9a8" stroke-width="1"/>
-            </g>
-            <g v-if="showDimensions" class="room-dimensions">
-              <line :x1="room.x" :y1="room.y - 28" :x2="room.x + room.width" :y2="room.y - 28" stroke="#99958c" stroke-width="1"/>
-              <path :d="`M ${room.x} ${room.y - 33}v10m${room.width} -10v10`" stroke="#99958c" stroke-width="1"/>
-              <rect :x="room.x + room.width / 2 - 35" :y="room.y - 40" width="70" height="22" rx="5" fill="#f7f6f2"/>
-              <text :x="room.x + room.width / 2" :y="room.y - 25" text-anchor="middle">{{ (room.width / SCALE).toFixed(2) }} m</text>
-              <line :x1="room.x - 28" :y1="room.y" :x2="room.x - 28" :y2="room.y + room.height" stroke="#99958c" stroke-width="1"/>
-              <path :d="`M ${room.x - 33} ${room.y}h10m-10 ${room.height}h10`" stroke="#99958c" stroke-width="1"/>
-              <rect :x="room.x - 64" :y="room.y + room.height / 2 - 12" width="70" height="23" rx="5" fill="#f7f6f2"/>
-              <text :x="room.x - 30" :y="room.y + room.height / 2 + 4" text-anchor="middle">{{ (room.height / SCALE).toFixed(2) }} m</text>
             </g>
             <g v-for="measurement in measurements" :key="`measure-${measurement.id}`">
               <line :x1="measurement.start.x" :y1="measurement.start.y" :x2="measurement.end.x" :y2="measurement.end.y" stroke="#628c75" stroke-width="2" stroke-dasharray="5 4"/>
@@ -378,7 +568,11 @@ watch([items, wallSegments, measurements], () => {
               <text :x="(measurement.start.x + measurement.end.x) / 2" :y="(measurement.start.y + measurement.end.y) / 2 - 2" text-anchor="middle" class="measure-label">{{ formatLength(measurement.start, measurement.end) }}</text>
             </g>
             <g v-if="pendingPoint" class="pending-point"><circle :cx="pendingPoint.x" :cy="pendingPoint.y" r="6"/><circle :cx="pendingPoint.x" :cy="pendingPoint.y" r="12"/></g>
-            <g v-for="item in items" :key="item.id" class="plan-item" :class="{ 'is-selected': selectedId === item.id }" :transform="`translate(${item.x} ${item.y}) rotate(${item.rotation})`" @click="itemClick($event, item)">
+            <g v-if="activeTool === 'room' && drawingRoomPoints.length">
+              <polyline :points="[...drawingRoomPoints, ...(drawingCursor ? [drawingCursor] : [])].map((point) => `${point.x},${point.y}`).join(' ')" fill="none" stroke="#668371" stroke-width="4" stroke-dasharray="9 5" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle v-for="(point, index) in drawingRoomPoints" :key="`room-point-${index}`" :cx="point.x" :cy="point.y" r="7" fill="#fff" stroke="#668371" stroke-width="3"/>
+            </g>
+            <g v-for="item in items" :key="item.id" class="plan-item" :class="{ 'is-selected': selectedId === item.id, 'is-dragging': isDragging && selectedId === item.id }" :transform="`translate(${item.x} ${item.y}) rotate(${item.rotation})`" @pointerdown="itemPointerDown($event, item)" @click.stop="selectedId = item.id">
               <g v-if="item.kind === 'chair'" filter="url(#soft-shadow)">
                 <rect x="-22" y="-20" width="44" height="37" rx="11" :fill="item.color || '#d8b69a'" stroke="#a78366" stroke-width="1.5"/>
                 <rect x="-18" y="-18" width="36" height="9" rx="5" fill="#e6cbb5"/>
@@ -404,21 +598,28 @@ watch([items, wallSegments, measurements], () => {
               <rect v-if="selectedId === item.id" :x="-item.width / 2 - 6" :y="-item.depth / 2 - 6" :width="item.width + 12" :height="item.depth + 12" rx="12" fill="none" stroke="#668774" stroke-width="2" stroke-dasharray="4 3"/>
               <title>{{ item.name || itemLabel(item.kind) }} · {{ item.width }} × {{ item.depth }} cm</title>
             </g>
-            <text :x="room.x + room.width / 2" :y="room.y + room.height + 35" text-anchor="middle" class="room-caption">LIVING ROOM · {{ totalArea }} M²</text>
+            <text :x="roomBounds.x + roomBounds.width / 2" :y="roomBounds.y + roomBounds.height + 35" text-anchor="middle" class="room-caption">LIVING ROOM · {{ totalArea }} M²</text>
           </svg>
 
           <ClientOnly v-else>
             <RoomScene3D
               :items="items"
               :walls="wallSegments"
-              :room-width="room.width"
-              :room-depth="room.height"
-              :room-x="room.x"
-              :room-y="room.y"
+              :room-points="roomPoints"
+              :room-width="roomBounds.width"
+              :room-depth="roomBounds.height"
+              :room-x="roomBounds.x"
+              :room-y="roomBounds.y"
               :selected-id="selectedId"
               @select="selectedId = $event"
             />
           </ClientOnly>
+          <div v-if="activeTool === 'room'" class="room-draw-banner">
+            <div><strong>Draw your room</strong><span>Click each corner around the room. Add at least 3 corners.</span><small v-if="roomDrawingError">{{ roomDrawingError }}</small></div>
+            <span class="corner-count">{{ drawingRoomPoints.length }} corners</span>
+            <button class="room-cancel-button" @click="cancelRoomDrawing">Cancel</button>
+            <button class="room-finish-button" :disabled="drawingRoomPoints.length < 3" @click="finishRoomDrawing">Finish room</button>
+          </div>
           <template v-if="view === '2d'">
             <div class="canvas-compass"><span>N</span><svg viewBox="0 0 20 28"><path d="M10 2 16 25 10 20 4 25 10 2Z" fill="#628c75"/></svg></div>
             <div class="canvas-scale"><span class="scale-line"></span><span>1 m</span></div>

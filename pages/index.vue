@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { defineAsyncComponent } from 'vue'
+
+const RoomScene3D = defineAsyncComponent(() => import('~/components/RoomScene3D.vue'))
+
 type Point = { x: number; y: number }
 type FurnitureKind = 'chair' | 'table' | 'cupboard' | 'shelf' | 'cube' | 'window' | 'door'
 type PlanItem = {
@@ -177,6 +181,12 @@ function changeZoom(amount: number) {
   zoom.value = Math.min(2.5, Math.max(0.5, Math.round((zoom.value + amount) * 10) / 10))
 }
 
+function onCanvasWheel(event: WheelEvent) {
+  if (view.value !== '2d') return
+  event.preventDefault()
+  changeZoom(event.deltaY > 0 ? -0.1 : 0.1)
+}
+
 function exportPlan() {
   const plan = {
     name: 'Living room',
@@ -209,37 +219,6 @@ function itemColor(kind: FurnitureKind) {
 
 function itemLabel(kind: FurnitureKind) {
   return catalog.find((entry) => entry.kind === kind)?.label ?? (kind === 'cube' ? 'Cube' : kind[0].toUpperCase() + kind.slice(1))
-}
-
-function projected(x: number, y: number, z = 0): Point {
-  return { x: 480 + (x - y) * 0.62, y: 140 + (x + y) * 0.32 - z }
-}
-
-function polygon(points: Point[]) {
-  return points.map((point) => `${point.x},${point.y}`).join(' ')
-}
-
-function isoBox(item: PlanItem) {
-  const rad = item.rotation * Math.PI / 180
-  const cos = Math.cos(rad)
-  const sin = Math.sin(rad)
-  const corners = [
-    [-item.width / 2, -item.depth / 2],
-    [item.width / 2, -item.depth / 2],
-    [item.width / 2, item.depth / 2],
-    [-item.width / 2, item.depth / 2],
-  ].map(([x, y]) => ({
-    x: item.x + (x ?? 0) * cos - (y ?? 0) * sin,
-    y: item.y + (x ?? 0) * sin + (y ?? 0) * cos,
-  }))
-  const bottom = corners.map((point) => projected(point.x, point.y))
-  const top = corners.map((point) => projected(point.x, point.y, item.height))
-  return { bottom, top }
-}
-
-function itemFootprint(item: PlanItem) {
-  const box = isoBox(item)
-  return polygon(box.bottom)
 }
 
 function clearPlan() {
@@ -348,7 +327,7 @@ watch([items, wallSegments, measurements], () => {
       </header>
       <div class="toolbar-row">
         <div class="view-switch"><button :class="{ selected: view === '2d' }" @click="view = '2d'"><span class="view-2d-icon">▦</span>2D plan</button><button :class="{ selected: view === '3d' }" @click="view = '3d'"><span class="view-3d-icon">◇</span>3D view</button></div>
-        <div class="tool-actions">
+        <div v-if="view === '2d'" class="tool-actions">
           <span class="tool-hint" v-if="activeTool === 'wall'">Click two points to draw a wall</span>
           <span class="tool-hint" v-else-if="activeTool === 'measure'">Click two points to measure</span>
           <button class="tool-button" :class="{ 'tool-active': activeTool === 'select' }" title="Select and move" @click="selectTool('select')"><svg viewBox="0 0 20 20"><path d="m5 3 10 8-5 .7-2.5 5L5 3Z"/></svg></button>
@@ -361,8 +340,8 @@ watch([items, wallSegments, measurements], () => {
         </div>
       </div>
       <div class="canvas-area">
-        <div class="canvas-label"><span class="canvas-status"></span> {{ view === '2d' ? 'FLOOR PLAN' : '3D PREVIEW' }} <span class="label-divider">·</span> LIVING ROOM</div>
-        <div class="canvas-card" @wheel.prevent="changeZoom($event.deltaY > 0 ? -0.1 : 0.1)">
+        <div class="canvas-label"><span class="canvas-status"></span> {{ view === '2d' ? 'FLOOR PLAN' : 'INTERACTIVE 3D' }} <span class="label-divider">·</span> {{ view === '2d' ? 'LIVING ROOM' : 'DRAG TO ORBIT' }}</div>
+        <div class="canvas-card" :class="{ 'immersive-card': view === '3d' }" @wheel="onCanvasWheel">
           <svg v-if="view === '2d'" class="plan-svg" :viewBox="planViewBox" @click="onCanvasClick" @mousemove="onCanvasMove">
             <defs>
               <pattern id="grid" width="25" height="25" patternUnits="userSpaceOnUse"><path d="M 25 0 L 0 0 0 25" fill="none" stroke="#e9e7e1" stroke-width="0.8"/></pattern>
@@ -428,31 +407,24 @@ watch([items, wallSegments, measurements], () => {
             <text :x="room.x + room.width / 2" :y="room.y + room.height + 35" text-anchor="middle" class="room-caption">LIVING ROOM · {{ totalArea }} M²</text>
           </svg>
 
-          <svg v-else class="plan-svg iso-svg" :viewBox="planViewBox">
-            <defs><pattern id="iso-grid" width="24" height="24" patternUnits="userSpaceOnUse" patternTransform="skewY(-28) scale(1,.75)"><path d="M 24 0 L 0 0 0 24" fill="none" stroke="#e9e7e1" stroke-width="1"/></pattern></defs>
-            <rect width="960" height="680" fill="#f7f6f2"/>
-            <polygon :points="polygon([projected(room.x, room.y), projected(room.x + room.width, room.y), projected(room.x + room.width, room.y + room.height), projected(room.x, room.y + room.height)])" fill="#f5eee4" stroke="#d8cfc2" stroke-width="2"/>
-            <g v-for="wall in wallSegments" :key="`iso-wall-${wall.id}`">
-              <polygon :points="polygon([projected(wall.start.x, wall.start.y), projected(wall.end.x, wall.end.y), projected(wall.end.x, wall.end.y, 150), projected(wall.start.x, wall.start.y, 150)])" fill="#d9d2c7" stroke="#aba397" stroke-width="1.5"/>
-            </g>
-            <g>
-              <polygon :points="polygon([projected(room.x, room.y), projected(room.x + room.width, room.y), projected(room.x + room.width, room.y, 170), projected(room.x, room.y, 170)])" fill="#e0d9cd" stroke="#b8aea0" stroke-width="1.5"/>
-              <polygon :points="polygon([projected(room.x, room.y), projected(room.x, room.y + room.height), projected(room.x, room.y + room.height, 170), projected(room.x, room.y, 170)])" fill="#d4ccbf" stroke="#b8aea0" stroke-width="1.5"/>
-              <polygon :points="polygon([projected(room.x + 50, room.y), projected(room.x + 160, room.y), projected(room.x + 160, room.y, 170), projected(room.x + 50, room.y, 170)])" fill="#a9d5d7" stroke="#75b7bd" stroke-width="2"/>
-            </g>
-            <g v-for="item in items" :key="`iso-${item.id}`" class="iso-item">
-              <polygon :points="polygon(isoBox(item).bottom)" :fill="item.color || itemColor(item.kind)" opacity=".42" stroke="#776c5d" stroke-width="1"/>
-              <polygon :points="polygon([isoBox(item).bottom[0]!, isoBox(item).bottom[1]!, isoBox(item).top[1]!, isoBox(item).top[0]!])" :fill="item.color || itemColor(item.kind)" stroke="#776c5d" stroke-width="1.5"/>
-              <polygon :points="polygon([isoBox(item).bottom[1]!, isoBox(item).bottom[2]!, isoBox(item).top[2]!, isoBox(item).top[1]!])" :fill="item.color || itemColor(item.kind)" opacity=".78" stroke="#776c5d" stroke-width="1.5"/>
-              <polygon :points="polygon(isoBox(item).top)" :fill="item.color || itemColor(item.kind)" opacity=".92" stroke="#776c5d" stroke-width="1.5"/>
-              <text :x="projected(item.x, item.y).x" :y="projected(item.x, item.y).y - item.height - 12" text-anchor="middle" class="iso-label">{{ item.name || itemLabel(item.kind) }}</text>
-            </g>
-            <text x="480" y="618" text-anchor="middle" class="room-caption">LIVING ROOM · {{ totalArea }} M²</text>
-          </svg>
-          <div class="canvas-compass"><span>N</span><svg viewBox="0 0 20 28"><path d="M10 2 16 25 10 20 4 25 10 2Z" fill="#628c75"/></svg></div>
-          <div class="canvas-scale"><span class="scale-line"></span><span>1 m</span></div>
+          <ClientOnly v-else>
+            <RoomScene3D
+              :items="items"
+              :walls="wallSegments"
+              :room-width="room.width"
+              :room-depth="room.height"
+              :room-x="room.x"
+              :room-y="room.y"
+              :selected-id="selectedId"
+              @select="selectedId = $event"
+            />
+          </ClientOnly>
+          <template v-if="view === '2d'">
+            <div class="canvas-compass"><span>N</span><svg viewBox="0 0 20 28"><path d="M10 2 16 25 10 20 4 25 10 2Z" fill="#628c75"/></svg></div>
+            <div class="canvas-scale"><span class="scale-line"></span><span>1 m</span></div>
+          </template>
         </div>
-        <div class="canvas-footer"><span><span class="keyboard-hint">⌘</span> + scroll to zoom</span><span class="footer-separator">·</span><span>{{ placedCount }} objects</span><span class="footer-separator">·</span><span>{{ totalArea }} m² floor area</span><span class="footer-spacer"></span><button @click="clearPlan">Reset plan</button></div>
+        <div class="canvas-footer"><span v-if="view === '2d'"><span class="keyboard-hint">⌘</span> + scroll to zoom</span><span v-else>Drag to orbit · right-drag to pan · scroll to zoom</span><span class="footer-separator">·</span><span>{{ placedCount }} objects</span><span class="footer-separator">·</span><span>{{ totalArea }} m² floor area</span><span class="footer-spacer"></span><button @click="clearPlan">Reset plan</button></div>
       </div>
       <aside v-if="selectedItem" class="inspector">
         <div class="inspector-heading"><div><span class="section-eyebrow">SELECTED OBJECT</span><h2>{{ selectedItem.name || itemLabel(selectedItem.kind) }}</h2></div><button class="icon-button" aria-label="Close inspector" @click="selectedId = null">×</button></div>

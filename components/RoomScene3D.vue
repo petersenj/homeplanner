@@ -10,6 +10,7 @@ type RoomItem = {
   width: number
   depth: number
   height: number
+  floorOffset?: number
   rotation: number
   name?: string
   color?: string
@@ -33,6 +34,7 @@ const canvas = ref<HTMLCanvasElement | null>(null)
 const isReady = ref(false)
 const sceneError = ref('')
 const isFullscreen = ref(false)
+const showCameraFacingWalls = ref(false)
 const selectedItem = computed(() => props.items.find((item) => item.id === props.selectedId) ?? null)
 
 let renderer: THREE.WebGLRenderer | undefined
@@ -282,7 +284,7 @@ function addFurniture(item: RoomItem) {
     door: '#c98d65',
   }[item.kind])
   const group = new THREE.Group()
-  group.position.set(x, 0, z)
+  group.position.set(x, Math.max(0, item.floorOffset ?? 0) / 100, z)
   group.rotation.y = -item.rotation * Math.PI / 180
   group.userData.itemId = item.id
   content.add(group)
@@ -334,7 +336,7 @@ function addFurniture(item: RoomItem) {
       )
     }
   } else if (item.kind === 'window') {
-    box(group, [width, height, 0.045], [0, height / 2 + 0.85, 0], '#75b8c1', {
+    box(group, [width, height, 0.045], [0, height / 2, 0], '#75b8c1', {
       transparent: true,
       opacity: 0.7,
       roughness: 0.2,
@@ -388,6 +390,10 @@ function updatePerimeterWallVisibility() {
   camera.updateMatrixWorld()
   const cameraPosition = camera.getWorldPosition(new THREE.Vector3())
   for (const wall of perimeterWalls) {
+    if (showCameraFacingWalls.value) {
+      wall.group.visible = true
+      continue
+    }
     if (wall.alwaysVisible) {
       wall.group.visible = true
       continue
@@ -537,6 +543,14 @@ onBeforeUnmount(() => {
       <span class="scene-top-divider">·</span>
       <span>{{ roomWidthM.toFixed(2) }} × {{ roomDepthM.toFixed(2) }} m</span>
     </div>
+    <button
+      class="scene-walls-toggle"
+      type="button"
+      :aria-pressed="showCameraFacingWalls"
+      @click="showCameraFacingWalls = !showCameraFacingWalls"
+    >
+      {{ showCameraFacingWalls ? 'Hide camera-facing walls' : 'Show camera-facing walls' }}
+    </button>
     <div class="scene-controls" aria-label="3D view controls">
       <span><i class="control-orbit">↻</i> Drag to orbit</span>
       <span><i class="control-pan">✥</i> Right-drag to pan</span>

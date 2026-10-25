@@ -56,6 +56,8 @@ const drawingCursorSnapsToWall = ref(false)
 const roomDrawingError = ref('')
 const showNewFloorplanConfirmation = ref(false)
 const projectMenuOpen = ref(false)
+const moreMenuOpen = ref(false)
+const appTutorial = ref<{ restart: () => void } | null>(null)
 const zoom = ref(1)
 const panOffset = ref<Point>({ x: 0, y: 0 })
 const wallSegments = ref<Wall[]>([])
@@ -1349,6 +1351,19 @@ function onLanguageChange(event: Event) {
   if (selectedLanguage === 'en' || selectedLanguage === 'de') setLanguage(selectedLanguage)
 }
 
+function selectTutorialDemoItem() {
+  if (!items.value.length) {
+    if (roomPoints.value.length) addItem('chair')
+    return
+  }
+  selectedId.value = items.value[0]!.id
+}
+
+function restartTutorial() {
+  moreMenuOpen.value = false
+  appTutorial.value?.restart()
+}
+
 function clearPlan() {
   if (!window.confirm(t('Start a new empty room plan? This will remove all placed items, walls, and measurements.'))) return
   items.value = []
@@ -1587,7 +1602,17 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
         </div>
 
       </div>
-      <div class="sidebar-bottom"><div class="avatar"></div><span><strong>{{ t('Your workspace') }}</strong><small>{{ t('Personal plan') }}</small></span><button class="icon-button more-button" :aria-label="t('More options')">···</button></div>
+      <div class="sidebar-bottom">
+        <div class="avatar"></div>
+        <span><strong>{{ t('Your workspace') }}</strong><small>{{ t('Personal plan') }}</small></span>
+        <button class="icon-button more-button" :aria-label="t('More options')" :aria-expanded="moreMenuOpen" aria-haspopup="menu" @click="moreMenuOpen = !moreMenuOpen">···</button>
+        <div v-if="moreMenuOpen" class="workspace-menu" role="menu">
+          <button role="menuitem" disabled @click="restartTutorial">
+            <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3.5 8.5a5.5 5.5 0 1 1 1.6 4M3.5 4.5v4h4M9 5.5v3l2 1.5"/></svg>
+            {{ t('Restart tour - coming soon') }}
+          </button>
+        </div>
+      </div>
     </aside>
 
     <section class="workspace">
@@ -1810,5 +1835,14 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
         </div>
       </section>
     </div>
+    <AppTutorial
+      ref="appTutorial"
+      :has-selection="selectedId !== null"
+      :has-items="items.length > 0"
+      @select-demo-item="selectTutorialDemoItem"
+      @set-project-menu-open="projectMenuOpen = $event"
+      @clear-selection="selectedId = null"
+      @create-own-floorplan="confirmNewFloorplan"
+    />
   </main>
 </template>

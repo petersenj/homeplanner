@@ -1512,12 +1512,17 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
 
 <template>
   <main class="app-shell">
-    <aside v-if="sidebarOpen" class="sidebar">
-      <a class="brand" href="#" :aria-label="`Floorwise ${t('home')}`">
-        <span class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 15.5 16 6l11 9.5v10H5v-10Z"/><path d="M12 25.5v-8h8v8"/></svg></span>
-        <span>floorwise<span class="brand-period">.</span><small>{{ t('YOUR SPACE, REIMAGINED') }}</small></span>
-      </a>
-      <div class="sidebar-scroll">
+    <aside class="sidebar" :class="{ 'sidebar-collapsed': !sidebarOpen }">
+      <div class="sidebar-brand-row">
+        <a v-if="sidebarOpen" class="brand" href="#" :aria-label="`Floorwise ${t('home')}`">
+          <span class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 15.5 16 6l11 9.5v10H5v-10Z"/><path d="M12 25.5v-8h8v8"/></svg></span>
+          <span>floorwise<span class="brand-period">.</span><small>{{ t('YOUR SPACE, REIMAGINED') }}</small></span>
+        </a>
+        <button class="sidebar-collapse-toggle" type="button" :aria-label="t(sidebarOpen ? 'Minimize sidebar' : 'Expand sidebar')" :title="t(sidebarOpen ? 'Minimize sidebar' : 'Expand sidebar')" @click="sidebarOpen = !sidebarOpen">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path :d="sidebarOpen ? 'm12 4-6 6 6 6' : 'm8 4 6 6-6 6'"/></svg>
+        </button>
+      </div>
+      <div v-if="sidebarOpen" class="sidebar-scroll">
         <div class="sidebar-section project-section">
           <div class="section-eyebrow">{{ t('YOUR PROJECT') }}</div>
           <button class="project-select" :aria-expanded="projectMenuOpen" aria-haspopup="menu" @click="projectMenuOpen = !projectMenuOpen"><span class="project-avatar">M</span><span class="project-copy"><strong>{{ t('My apartment') }}</strong><small>{{ t('Personal floorplan') }}</small></span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
@@ -1558,6 +1563,9 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
                   @click.stop
                   @focus="selectedId = item.id"
                 >
+                <button class="placed-delete" type="button" :aria-label="`${t('Remove')} ${item.name || t(itemLabel(item.kind))}`" :title="t('Remove object')" @click.stop="removeItem(item.id)">
+                  <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.5h10M6 4.5V3h4v1.5m2 0-.6 8H4.6l-.6-8m3 2v4m2-4v4"/></svg>
+                </button>
               </div>
             </div>
           </div>
@@ -1602,7 +1610,7 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
         </div>
 
       </div>
-      <div class="sidebar-bottom">
+      <div v-if="sidebarOpen" class="sidebar-bottom">
         <div class="avatar"></div>
         <span><strong>{{ t('Your workspace') }}</strong><small>{{ t('Personal plan') }}</small></span>
         <button class="icon-button more-button" :aria-label="t('More options')" :aria-expanded="moreMenuOpen" aria-haspopup="menu" @click="moreMenuOpen = !moreMenuOpen">···</button>

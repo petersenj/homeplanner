@@ -72,6 +72,7 @@ const sidebarOpen = ref(true)
 const canvasCard = ref<HTMLDivElement | null>(null)
 const canvasCardWidth = ref(0)
 let canvasResizeObserver: ResizeObserver | undefined
+let isMobileViewport = false
 const isDragging = ref(false)
 const isRotating = ref(false)
 const isPanning = ref(false)
@@ -1442,7 +1443,17 @@ function onWindowBlur() {
   stopKeyboardMovement()
 }
 
+function syncSidebarToViewport() {
+  const nextIsMobileViewport = window.matchMedia('(max-width: 760px)').matches
+  if (nextIsMobileViewport === isMobileViewport) return
+  isMobileViewport = nextIsMobileViewport
+  sidebarOpen.value = !nextIsMobileViewport
+}
+
 onMounted(() => {
+  isMobileViewport = window.matchMedia('(max-width: 760px)').matches
+  sidebarOpen.value = !isMobileViewport
+  window.addEventListener('resize', syncSidebarToViewport)
   canvasResizeObserver = new ResizeObserver(([entry]) => {
     canvasCardWidth.value = entry?.contentRect.width ?? 0
   })
@@ -1487,6 +1498,7 @@ onMounted(() => {
   }
 })
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', syncSidebarToViewport)
   canvasResizeObserver?.disconnect()
   canvasResizeObserver = undefined
   window.removeEventListener('pointerup', stopDragging)
@@ -1622,10 +1634,11 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
         </div>
       </div>
     </aside>
+    <button v-if="sidebarOpen" class="sidebar-backdrop" type="button" :aria-label="t('Close sidebar')" @click="sidebarOpen = false"></button>
 
     <section class="workspace">
       <header class="topbar">
-        <div class="breadcrumbs"><button class="mobile-menu icon-button" :aria-label="t('Toggle sidebar')" @click="sidebarOpen = !sidebarOpen">☰</button><span>{{ t('My apartment') }}</span><span class="saved-state"><span></span> {{ t('All changes saved') }}</span></div>
+        <div class="breadcrumbs"><button class="mobile-menu icon-button" :aria-label="t('Toggle sidebar')" :aria-expanded="sidebarOpen" @click="sidebarOpen = !sidebarOpen">☰</button><span>{{ t('My apartment') }}</span><span class="saved-state"><span></span> {{ t('All changes saved') }}</span></div>
         <div class="top-actions">
           <select class="language-switch" :value="language" :aria-label="t('Change language')" :title="t('Change language')" @change="onLanguageChange">
             <option value="en">{{ t('English') }}</option>

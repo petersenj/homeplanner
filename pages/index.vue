@@ -1311,7 +1311,7 @@ function exportPlan() {
   const url = URL.createObjectURL(new Blob([JSON.stringify(plan, null, 2)], { type: 'application/json' }))
   const link = document.createElement('a')
   link.href = url
-  link.download = 'living-room-plan.json'
+  link.download = 'floorwise-plan.json'
   link.click()
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

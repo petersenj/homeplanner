@@ -79,6 +79,10 @@ const dragOffset = ref<Point>({ x: 0, y: 0 })
 const rotationStartPointerAngle = ref(0)
 const rotationStartItemAngle = ref(0)
 const ignoreNextCanvasClick = ref(false)
+const heldArrowKeys = new Set<string>()
+let keyboardMoveFrame = 0
+let keyboardMoveStartedAt = 0
+let keyboardMoveLastFrame = 0
 const items = ref<PlanItem[]>([
   { id: 1, kind: 'table', x: 395, y: 305, width: 120, depth: 60, height: 75, rotation: 0 },
   { id: 2, kind: 'chair', x: 345, y: 280, width: 48, depth: 48, height: 88, rotation: 0 },
@@ -1333,6 +1337,76 @@ function clearPlan() {
   selectedId.value = null
 }
 
+function isEditableKeyboardTarget(target: EventTarget | null) {
+  return target instanceof HTMLElement
+    && (target.isContentEditable || target.closest('input, textarea, select, [contenteditable="true"]') !== null)
+}
+
+function stopKeyboardMovement() {
+  heldArrowKeys.clear()
+  if (keyboardMoveFrame) window.cancelAnimationFrame(keyboardMoveFrame)
+  keyboardMoveFrame = 0
+  keyboardMoveStartedAt = 0
+  keyboardMoveLastFrame = 0
+}
+
+function moveSelectedItemWithKeys(timestamp: number) {
+  if (!heldArrowKeys.size || selectedId.value === null || (view.value !== '2d' && view.value !== '3d')) {
+    stopKeyboardMovement()
+    return
+  }
+  const item = items.value.find((entry) => entry.id === selectedId.value)
+  if (!item) {
+    stopKeyboardMovement()
+    return
+  }
+
+  const elapsed = Math.min((timestamp - keyboardMoveLastFrame) / 1000, 0.05)
+  const heldDuration = (timestamp - keyboardMoveStartedAt) / 1000
+  const speed = Math.min(40 + heldDuration * 180, 500)
+  let dx = Number(heldArrowKeys.has('ArrowRight')) - Number(heldArrowKeys.has('ArrowLeft'))
+  let dy = Number(heldArrowKeys.has('ArrowDown')) - Number(heldArrowKeys.has('ArrowUp'))
+  const length = Math.hypot(dx, dy)
+  if (length) {
+    dx = dx / length * speed * elapsed
+    dy = dy / length * speed * elapsed
+    const target = { x: item.x + dx, y: item.y + dy }
+    if (item.kind === 'door' || item.kind === 'window') {
+      const edge = nearestRoomEdge(target)
+      const projected = projectOnEdge(target, edge, item.width / 2)
+      item.x = projected.point.x
+      item.y = projected.point.y
+      item.rotation = Math.atan2(edge.end.y - edge.start.y, edge.end.x - edge.start.x) * 180 / Math.PI
+    } else if (isFurniturePlacementValid(target, item)) {
+      item.x = target.x
+      item.y = target.y
+    }
+  }
+  keyboardMoveLastFrame = timestamp
+  keyboardMoveFrame = window.requestAnimationFrame(moveSelectedItemWithKeys)
+}
+
+function onKeyboardMoveKeyDown(event: KeyboardEvent) {
+  if (!event.key.startsWith('Arrow') || isEditableKeyboardTarget(event.target) || selectedId.value === null) return
+  if (view.value !== '2d' && view.value !== '3d') return
+  event.preventDefault()
+  heldArrowKeys.add(event.key)
+  if (keyboardMoveFrame) return
+  const now = performance.now()
+  keyboardMoveStartedAt = now
+  keyboardMoveLastFrame = now
+  keyboardMoveFrame = window.requestAnimationFrame(moveSelectedItemWithKeys)
+}
+
+function onKeyboardMoveKeyUp(event: KeyboardEvent) {
+  if (!heldArrowKeys.delete(event.key)) return
+  if (!heldArrowKeys.size) stopKeyboardMovement()
+}
+
+function onWindowBlur() {
+  stopKeyboardMovement()
+}
+
 onMounted(() => {
   canvasResizeObserver = new ResizeObserver(([entry]) => {
     canvasCardWidth.value = entry?.contentRect.width ?? 0
@@ -1340,6 +1414,9 @@ onMounted(() => {
   if (canvasCard.value) canvasResizeObserver.observe(canvasCard.value)
   window.addEventListener('pointerup', stopDragging)
   window.addEventListener('pointercancel', stopDragging)
+  window.addEventListener('keydown', onKeyboardMoveKeyDown)
+  window.addEventListener('keyup', onKeyboardMoveKeyUp)
+  window.addEventListener('blur', onWindowBlur)
   const savedPlan = window.localStorage.getItem('roomwise-plan-v1')
   if (savedPlan) {
     try {
@@ -1379,6 +1456,10 @@ onBeforeUnmount(() => {
   canvasResizeObserver = undefined
   window.removeEventListener('pointerup', stopDragging)
   window.removeEventListener('pointercancel', stopDragging)
+  window.removeEventListener('keydown', onKeyboardMoveKeyDown)
+  window.removeEventListener('keyup', onKeyboardMoveKeyUp)
+  window.removeEventListener('blur', onWindowBlur)
+  stopKeyboardMovement()
 })
 watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, roomNames], () => {
   if (import.meta.client) {

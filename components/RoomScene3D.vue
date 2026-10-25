@@ -34,7 +34,8 @@ const canvas = ref<HTMLCanvasElement | null>(null)
 const isReady = ref(false)
 const sceneError = ref('')
 const isFullscreen = ref(false)
-const showCameraFacingWalls = ref(false)
+const showCameraFacingWalls = ref(true)
+const isTopDownView = ref(true)
 const selectedItem = computed(() => props.items.find((item) => item.id === props.selectedId) ?? null)
 
 let renderer: THREE.WebGLRenderer | undefined
@@ -48,6 +49,17 @@ let raycaster: THREE.Raycaster | undefined
 let pointer: THREE.Vector2 | undefined
 let pickableObjects: THREE.Object3D[] = []
 let perimeterWalls: Array<{ group: THREE.Group; midpoint: THREE.Vector3; outward: THREE.Vector3; alwaysVisible: boolean }> = []
+let cameraTransition: {
+  startedAt: number
+  duration: number
+  startPosition: THREE.Vector3
+  endPosition: THREE.Vector3
+  startTarget: THREE.Vector3
+  endTarget: THREE.Vector3
+  startQuaternion: THREE.Quaternion
+  endQuaternion: THREE.Quaternion
+  endUp: THREE.Vector3
+} | null = null
 
 const roomWidthM = computed(() => props.roomWidth / 100)
 const roomDepthM = computed(() => props.roomDepth / 100)
@@ -412,11 +424,32 @@ function resize() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
   camera.aspect = width / height
   camera.updateProjectionMatrix()
+  if (isTopDownView.value) positionCamera()
 }
 
-function render() {
+function render(timestamp: number) {
   if (renderer && scene && camera && controls) {
-    controls.update()
+    if (cameraTransition) {
+      const transition = cameraTransition
+      const progress = Math.min((timestamp - transition.startedAt) / transition.duration, 1)
+      const eased = progress < 0.5
+        ? 4 * progress ** 3
+        : 1 - (-2 * progress + 2) ** 3 / 2
+      camera.position.lerpVectors(transition.startPosition, transition.endPosition, eased)
+      controls.target.lerpVectors(transition.startTarget, transition.endTarget, eased)
+      camera.quaternion.slerpQuaternions(transition.startQuaternion, transition.endQuaternion, eased)
+      camera.updateMatrixWorld()
+      if (progress >= 1) {
+        camera.up.copy(transition.endUp)
+        camera.position.copy(transition.endPosition)
+        controls.target.copy(transition.endTarget)
+        cameraTransition = null
+        controls.enabled = true
+        controls.update()
+      }
+    } else {
+      controls.update()
+    }
     updatePerimeterWallVisibility()
     renderer.render(scene, camera)
   }
@@ -437,11 +470,81 @@ function onCanvasClick(event: MouseEvent) {
   emit('select', itemId)
 }
 
-function resetCamera() {
+function cameraView(topDown: boolean) {
   if (!camera || !controls) return
-  camera.position.set(roomWidthM.value * 1.08, roomDepthM.value * 1.05, roomDepthM.value * 1.45)
-  controls.target.set(0, 0.55, 0)
+  const target = new THREE.Vector3(0, topDown ? 0 : 0.55, 0)
+  const up = new THREE.Vector3(0, 1, 0)
+  let position: THREE.Vector3
+  let maxDistance = 16
+  if (topDown) {
+    const halfFov = THREE.MathUtils.degToRad(camera.fov / 2)
+    const fitHeight = (roomDepthM.value + 0.4) / (2 * Math.tan(halfFov))
+    const fitWidth = (roomWidthM.value + 0.4) / (2 * Math.tan(halfFov) * camera.aspect)
+    const distance = Math.max(fitHeight, fitWidth, 0.5) * 1.6
+    up.set(0, 0, -1)
+    position = new THREE.Vector3(0, distance, 0)
+    maxDistance = Math.max(16, distance * 1.5)
+  } else {
+    position = new THREE.Vector3(roomWidthM.value * 1.08, roomDepthM.value * 1.05, roomDepthM.value * 1.45)
+  }
+  return { target, up, position, maxDistance }
+}
+
+function positionCamera() {
+  if (!camera || !controls) return
+  cameraTransition = null
+  controls.enabled = true
+  const destination = cameraView(isTopDownView.value)
+  if (!destination) return
+  controls.target.copy(destination.target)
+  camera.up.copy(destination.up)
+  camera.position.copy(destination.position)
+  controls.maxDistance = destination.maxDistance
+  controls.maxPolarAngle = isTopDownView.value ? Math.PI / 2 : Math.PI * 0.485
   controls.update()
+}
+
+function animateCameraTo(topDown: boolean) {
+  if (!camera || !controls) return
+  const destination = cameraView(topDown)
+  if (!destination) return
+  if (topDown) showCameraFacingWalls.value = true
+
+  const endQuaternion = new THREE.Quaternion()
+  const previousUp = camera.up.clone()
+  camera.up.copy(destination.up)
+  const previousPosition = camera.position.clone()
+  camera.position.copy(destination.position)
+  camera.lookAt(destination.target)
+  endQuaternion.copy(camera.quaternion)
+  camera.position.copy(previousPosition)
+  camera.up.copy(previousUp)
+  camera.lookAt(controls.target)
+
+  cameraTransition = {
+    startedAt: performance.now(),
+    duration: 650,
+    startPosition: camera.position.clone(),
+    endPosition: destination.position,
+    startTarget: controls.target.clone(),
+    endTarget: destination.target,
+    startQuaternion: camera.quaternion.clone(),
+    endQuaternion,
+    endUp: destination.up,
+  }
+  controls.enabled = false
+  controls.maxDistance = destination.maxDistance
+  controls.maxPolarAngle = topDown ? Math.PI / 2 : Math.PI * 0.485
+  isTopDownView.value = topDown
+  showCameraFacingWalls.value = topDown
+}
+
+function toggleTopDownView() {
+  animateCameraTo(!isTopDownView.value)
+}
+
+function resetCamera() {
+  animateCameraTo(false)
 }
 
 async function toggleFullscreen() {
@@ -459,8 +562,21 @@ function onFullscreenChange() {
   window.requestAnimationFrame(resize)
 }
 
+function onControlsStart() {
+  if (cameraTransition) {
+    cameraTransition = null
+    controls!.enabled = true
+  }
+  if (isTopDownView.value) {
+    isTopDownView.value = false
+    showCameraFacingWalls.value = false
+    if (controls) controls.maxPolarAngle = Math.PI * 0.485
+  }
+  emit('select', null)
+}
+
 watch(() => [props.items, props.walls, props.rooms, props.selectedId, props.roomWidth, props.roomDepth], updateScene, { deep: true })
-watch(() => [props.roomWidth, props.roomDepth], resetCamera)
+watch(() => [props.roomWidth, props.roomDepth], positionCamera)
 
 onMounted(() => {
   if (!host.value || !canvas.value) return
@@ -509,7 +625,8 @@ onMounted(() => {
     resize()
     resizeObserver = new ResizeObserver(resize)
     resizeObserver.observe(host.value)
-    controls.addEventListener('start', () => emit('select', null))
+    controls.addEventListener('start', onControlsStart)
+    positionCamera()
     canvas.value.addEventListener('click', onCanvasClick)
     isReady.value = true
     animationFrame = window.requestAnimationFrame(render)
@@ -550,6 +667,15 @@ onBeforeUnmount(() => {
       @click="showCameraFacingWalls = !showCameraFacingWalls"
     >
       {{ showCameraFacingWalls ? 'Hide camera-facing walls' : 'Show camera-facing walls' }}
+    </button>
+    <button
+      class="scene-top-view-toggle"
+      type="button"
+      :aria-pressed="isTopDownView"
+      :aria-label="isTopDownView ? 'Exit north-aligned top-down view' : 'Switch to north-aligned top-down view'"
+      @click="toggleTopDownView"
+    >
+      {{ isTopDownView ? 'Exit top-down view' : 'Top-down · North up' }}
     </button>
     <div class="scene-controls" aria-label="3D view controls">
       <span><i class="control-orbit">↻</i> Drag to orbit</span>

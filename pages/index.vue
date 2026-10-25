@@ -920,6 +920,10 @@ function onCanvasClick(event: MouseEvent) {
   }
   if ((event.target as Element).closest('.plan-item')) return
   const rawPoint = svgPoint(event)
+  if (!allRooms.value.length && activeTool.value === 'select') {
+    activeTool.value = 'room'
+    selectedId.value = null
+  }
   if (activeTool.value === 'room' || activeTool.value === 'addRoom') {
     if (activeTool.value === 'addRoom' && !drawingRoomPoints.value.length) {
       const boundary = nearestRoomBoundaryPoint(rawPoint)
@@ -1783,7 +1787,7 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
             <div class="canvas-scale"><span class="scale-line" :style="{ width: `${scaleBar.width}px` }"></span><span>{{ scaleBar.label }}</span></div>
           </template>
         </div>
-        <div class="canvas-footer"><span v-if="view === '2d'"><span class="keyboard-hint">⌘</span> + {{ t('scroll to zoom') }}</span><span v-else>{{ t('Drag to orbit · right-drag to pan · scroll to zoom') }}</span><span class="footer-separator">·</span><span>{{ placedCount }} {{ t('objects') }}</span><span class="footer-separator">·</span><span>{{ totalArea }} m² {{ t('floor area') }}</span><span class="footer-spacer"></span><button @click="clearPlan">{{ t('Reset plan') }}</button></div>
+        <div class="canvas-footer"><span v-if="view === '2d'">{{ t('Right-drag to pan · scroll to zoom · arrow keys to move selected object') }}</span><span v-else>{{ t('Drag to orbit · right-drag to pan · scroll to zoom · arrow keys to move selected object') }}</span><span class="footer-separator">·</span><span>{{ placedCount }} {{ t('objects') }}</span><span class="footer-separator">·</span><span>{{ totalArea }} m² {{ t('floor area') }}</span><span class="footer-spacer"></span><button @click="clearPlan">{{ t('Reset plan') }}</button></div>
       </div>
       <aside v-if="selectedItem" class="inspector">
         <div class="inspector-heading"><div><span class="section-eyebrow">{{ t('SELECTED OBJECT') }}</span><input v-model="selectedItem.name" class="inspector-title-input" :aria-label="`${t('Name for')} ${t(itemLabel(selectedItem.kind))}`" :placeholder="t(itemLabel(selectedItem.kind))"></div><button class="icon-button" :aria-label="t('Close inspector')" @click="selectedId = null">×</button></div>

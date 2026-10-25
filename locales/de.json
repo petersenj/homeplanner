@@ -29,7 +29,6 @@
     "name": "Name",
     "for": "für",
     "furniture and objects": "Möbel und Objekte",
-    "scroll to zoom": "Scrollen zum Zoomen",
     "objects": "Objekte",
     "floor area": "Grundfläche"
   },
@@ -94,7 +93,8 @@
     "Click anywhere in the room to place your cube": "Klicke in den Raum, um den Würfel zu platzieren",
     "corners": "Ecken",
     "Finish room": "Raum abschließen",
-    "Drag to orbit · right-drag to pan · scroll to zoom": "Ziehen zum Umschauen · Rechtsziehen zum Verschieben · Scrollen zum Zoomen",
+    "Right-drag to pan · scroll to zoom · arrow keys to move selected object": "Rechts ziehen zum Verschieben · Scrollen zum Zoomen · Pfeiltasten bewegen das ausgewählte Objekt",
+    "Drag to orbit · right-drag to pan · scroll to zoom · arrow keys to move selected object": "Ziehen zum Umschauen · Rechts ziehen zum Verschieben · Scrollen zum Zoomen · Pfeiltasten bewegen das ausgewählte Objekt",
     "objects": "Objekte",
     "floor area": "Grundfläche",
     "Reset plan": "Plan zurücksetzen",

@@ -1,0 +1,58 @@
+[
+  {
+    "date": "2026-10-25",
+    "subject": "add responsive sidepanel"
+  },
+  {
+    "date": "2026-10-25",
+    "subject": "add sidebar minimizing and delete icons to room objects in list"
+  },
+  {
+    "date": "2026-10-25",
+    "subject": "added tutorial"
+  },
+  {
+    "date": "2026-10-25",
+    "subject": "renamed export json name"
+  },
+  {
+    "date": "2026-10-25",
+    "subject": "improved mouse+keyboard shortcuts"
+  },
+  {
+    "date": "2026-10-25",
+    "subject": "restart room drawing after it was cancelled on empty floor plan"
+  },
+  {
+    "date": "2026-10-25",
+    "subject": "added multiple language support"
+  },
+  {
+    "date": "2026-10-25",
+    "subject": "rename app and animate 3d view from top-down to default angle"
+  },
+  {
+    "date": "2026-10-25",
+    "subject": "animate 3d view and add top-down view"
+  },
+  {
+    "date": "2026-10-25",
+    "subject": "updated floorplan list, add distance from floor, improved item category list etc"
+  },
+  {
+    "date": "2026-10-25",
+    "subject": "add confirmation to reset floorplan and add new rooms starting with initial room"
+  },
+  {
+    "date": "2026-10-25",
+    "subject": "add drawable room, hide camera facing walls"
+  },
+  {
+    "date": "2026-10-24",
+    "subject": "added threejs 3d view"
+  },
+  {
+    "date": "2026-10-24",
+    "subject": "initial commit with homeplanner basic app"
+  }
+]

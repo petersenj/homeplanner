@@ -57,6 +57,7 @@ const roomDrawingError = ref('')
 const showNewFloorplanConfirmation = ref(false)
 const projectMenuOpen = ref(false)
 const moreMenuOpen = ref(false)
+const changelogOpen = ref(false)
 const appTutorial = ref<{ restart: () => void } | null>(null)
 const zoom = ref(1)
 const panOffset = ref<Point>({ x: 0, y: 0 })
@@ -1365,6 +1366,11 @@ function restartTutorial() {
   appTutorial.value?.restart()
 }
 
+function openChangelog() {
+  moreMenuOpen.value = false
+  changelogOpen.value = true
+}
+
 function clearPlan() {
   if (!window.confirm(t('Start a new empty room plan? This will remove all placed items, walls, and measurements.'))) return
   items.value = []
@@ -1631,6 +1637,10 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
             <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3.5 8.5a5.5 5.5 0 1 1 1.6 4M3.5 4.5v4h4M9 5.5v3l2 1.5"/></svg>
             {{ t('Restart tour - coming soon') }}
           </button>
+          <button role="menuitem" @click="openChangelog">
+            <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M4 2.5h7l3 3v10H4zM11 2.5v3h3M6.5 9h5M6.5 12h5"/></svg>
+            {{ t('Changelog') }}
+          </button>
         </div>
       </div>
     </aside>
@@ -1856,6 +1866,7 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
         </div>
       </section>
     </div>
+    <AppChangelog :open="changelogOpen" @update:open="changelogOpen = $event" />
     <AppTutorial
       ref="appTutorial"
       :has-selection="selectedId !== null"

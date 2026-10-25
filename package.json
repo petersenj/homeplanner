@@ -3,7 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "generate:changelog": "node scripts/generate-changelog.mjs",
+    "predev": "npm run generate:changelog",
     "dev": "nuxt dev",
+    "prebuild": "npm run generate:changelog",
     "build": "nuxt build",
     "typecheck": "nuxt typecheck",
     "preview": "nuxt preview"

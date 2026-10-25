@@ -630,6 +630,7 @@ onMounted(() => {
     canvas.value.addEventListener('click', onCanvasClick)
     isReady.value = true
     animationFrame = window.requestAnimationFrame(render)
+    window.requestAnimationFrame(() => animateCameraTo(false))
   } catch (error) {
     sceneError.value = 'Your browser could not start the interactive 3D view. Try updating your browser or enabling hardware acceleration.'
     console.error('Could not initialize the interactive 3D room.', error)

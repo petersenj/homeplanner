@@ -4,7 +4,7 @@ export default defineNuxtConfig({
   devtools: { enabled: false },
   app: {
     head: {
-      title: 'Roomwise — Home planner',
+      title: 'Floorwise — Home planner',
       meta: [
         { name: 'description', content: 'Plan your space, down to the last detail.' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1' },

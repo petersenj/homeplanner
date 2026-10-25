@@ -1417,7 +1417,7 @@ onMounted(() => {
   window.addEventListener('keydown', onKeyboardMoveKeyDown)
   window.addEventListener('keyup', onKeyboardMoveKeyUp)
   window.addEventListener('blur', onWindowBlur)
-  const savedPlan = window.localStorage.getItem('roomwise-plan-v1')
+  const savedPlan = window.localStorage.getItem('floorwise-plan-v1') ?? window.localStorage.getItem('roomwise-plan-v1')
   if (savedPlan) {
     try {
       const plan = JSON.parse(savedPlan) as { items?: Array<PlanItem & { rearSide?: unknown }>; walls?: Wall[]; measurements?: Measurement[]; roomPoints?: Point[]; rooms?: Point[][]; roomNames?: string[] }
@@ -1463,7 +1463,7 @@ onBeforeUnmount(() => {
 })
 watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, roomNames], () => {
   if (import.meta.client) {
-    window.localStorage.setItem('roomwise-plan-v1', JSON.stringify({
+    window.localStorage.setItem('floorwise-plan-v1', JSON.stringify({
       items: items.value,
       walls: wallSegments.value,
       measurements: measurements.value,
@@ -1478,9 +1478,9 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
 <template>
   <main class="app-shell">
     <aside v-if="sidebarOpen" class="sidebar">
-      <a class="brand" href="#" aria-label="Roomwise home">
+      <a class="brand" href="#" aria-label="Floorwise home">
         <span class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 15.5 16 6l11 9.5v10H5v-10Z"/><path d="M12 25.5v-8h8v8"/></svg></span>
-        <span>roomwise<span class="brand-period">.</span><small>YOUR SPACE, REIMAGINED</small></span>
+        <span>floorwise<span class="brand-period">.</span><small>YOUR SPACE, REIMAGINED</small></span>
       </a>
       <div class="sidebar-scroll">
         <div class="sidebar-section project-section">

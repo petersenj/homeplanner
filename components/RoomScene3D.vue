@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+const { t } = useAppLanguage()
 
 type RoomItem = {
   id: number
@@ -37,6 +38,15 @@ const isFullscreen = ref(false)
 const showCameraFacingWalls = ref(true)
 const isTopDownView = ref(true)
 const selectedItem = computed(() => props.items.find((item) => item.id === props.selectedId) ?? null)
+const itemLabels: Record<RoomItem['kind'], string> = {
+  chair: 'Chair',
+  table: 'Table',
+  cupboard: 'Cupboard',
+  shelf: 'Shelf',
+  cube: 'Cube',
+  window: 'Window',
+  door: 'Door',
+}
 
 let renderer: THREE.WebGLRenderer | undefined
 let camera: THREE.PerspectiveCamera | undefined
@@ -652,12 +662,12 @@ onBeforeUnmount(() => {
 
 <template>
   <div ref="host" class="room-scene">
-    <canvas ref="canvas" class="room-scene-canvas" aria-label="Interactive 3D room. Drag to orbit, scroll to zoom, right-drag to pan." />
-    <div v-if="sceneError" class="scene-loading scene-error">{{ sceneError }}</div>
-    <div v-else-if="!isReady" class="scene-loading">Preparing your room…</div>
+    <canvas ref="canvas" class="room-scene-canvas" :aria-label="t('Interactive 3D room. Drag to orbit, scroll to zoom, right-drag to pan.')" />
+    <div v-if="sceneError" class="scene-loading scene-error">{{ t(sceneError) }}</div>
+    <div v-else-if="!isReady" class="scene-loading">{{ t('Preparing your room…') }}</div>
     <div class="scene-top-left">
       <span class="scene-live-dot"></span>
-      <span>LIVE 3D</span>
+      <span>{{ t('LIVE 3D') }}</span>
       <span class="scene-top-divider">·</span>
       <span>{{ roomWidthM.toFixed(2) }} × {{ roomDepthM.toFixed(2) }} m</span>
     </div>
@@ -667,29 +677,29 @@ onBeforeUnmount(() => {
       :aria-pressed="showCameraFacingWalls"
       @click="showCameraFacingWalls = !showCameraFacingWalls"
     >
-      {{ showCameraFacingWalls ? 'Hide camera-facing walls' : 'Show camera-facing walls' }}
+      {{ t(showCameraFacingWalls ? 'Hide camera-facing walls' : 'Show camera-facing walls') }}
     </button>
     <button
       class="scene-top-view-toggle"
       type="button"
       :aria-pressed="isTopDownView"
-      :aria-label="isTopDownView ? 'Exit north-aligned top-down view' : 'Switch to north-aligned top-down view'"
+      :aria-label="t(isTopDownView ? 'Exit north-aligned top-down view' : 'Switch to north-aligned top-down view')"
       @click="toggleTopDownView"
     >
-      {{ isTopDownView ? 'Exit top-down view' : 'Top-down · North up' }}
+      {{ t(isTopDownView ? 'Exit top-down view' : 'Top-down · North up') }}
     </button>
-    <div class="scene-controls" aria-label="3D view controls">
-      <span><i class="control-orbit">↻</i> Drag to orbit</span>
-      <span><i class="control-pan">✥</i> Right-drag to pan</span>
-      <span><i class="control-zoom">⌕</i> Scroll to zoom</span>
+    <div class="scene-controls" :aria-label="t('3D view controls')">
+      <span><i class="control-orbit">↻</i> {{ t('Drag to orbit') }}</span>
+      <span><i class="control-pan">✥</i> {{ t('Right-drag to pan') }}</span>
+      <span><i class="control-zoom">⌕</i> {{ t('Scroll to zoom') }}</span>
     </div>
     <div class="scene-compass"><span>N</span><span>↑</span></div>
     <div v-if="selectedItem" class="scene-selection">
       <span :style="{ background: selectedItem.color || '#8e967e' }"></span>
-      <strong>{{ selectedItem.name || selectedItem.kind }}</strong>
+      <strong>{{ selectedItem.name || t(itemLabels[selectedItem.kind]) }}</strong>
       <small>{{ selectedItem.width }} × {{ selectedItem.depth }} × {{ selectedItem.height }} cm</small>
     </div>
-    <button class="scene-reset" aria-label="Reset 3D camera" title="Reset camera view" @click="resetCamera">↗ <span>Reset view</span></button>
-    <button class="scene-fullscreen" :aria-label="isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'" :title="isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'" @click="toggleFullscreen">{{ isFullscreen ? '↙' : '⛶' }} <span>{{ isFullscreen ? 'Exit fullscreen' : 'Fullscreen' }}</span></button>
+    <button class="scene-reset" :aria-label="t('Reset 3D camera')" :title="t('Reset camera view')" @click="resetCamera">↗ <span>{{ t('Reset view') }}</span></button>
+    <button class="scene-fullscreen" :aria-label="t(isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen')" :title="t(isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen')" @click="toggleFullscreen">{{ isFullscreen ? '↙' : '⛶' }} <span>{{ t(isFullscreen ? 'Exit fullscreen' : 'Fullscreen') }}</span></button>
   </div>
 </template>

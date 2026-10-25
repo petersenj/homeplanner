@@ -109,6 +109,7 @@ button { color: inherit; cursor: pointer; }
 .saved-state { display: flex; align-items: center; gap: 6px; margin-left: 9px; color: #979990; font-size: 9px; }
 .saved-state > span { width: 5px; height: 5px; border-radius: 50%; background: #8aa28b; }
 .top-actions { display: flex; align-items: center; gap: 9px; }
+.language-switch { height: 30px; border: 1px solid #e6e5df; border-radius: 6px; background: #fff; color: #555a52; padding: 0 7px; font: inherit; font-size: 10px; }
 .top-icon { width: 29px; height: 29px; border: 0; border-radius: 6px; background: transparent; color: #6f726b; font-size: 20px; }
 .top-icon:hover { background: #f4f4ef; }
 .disabled-icon { color: #c9c9c3; }

@@ -2,6 +2,7 @@
 import { defineAsyncComponent } from 'vue'
 
 const RoomScene3D = defineAsyncComponent(() => import('~/components/RoomScene3D.vue'))
+const { language, setLanguage, t } = useAppLanguage()
 
 type Point = { x: number; y: number }
 type FurnitureKind = 'chair' | 'table' | 'cupboard' | 'shelf' | 'cube' | 'window' | 'door'
@@ -1329,8 +1330,24 @@ function itemLabel(kind: FurnitureKind) {
   return catalog.find((entry) => entry.kind === kind)?.label ?? (kind === 'cube' ? 'Cube' : kind[0].toUpperCase() + kind.slice(1))
 }
 
+function roomDisplayName(name: string | undefined, index: number) {
+  const defaultName = `Room ${index + 1}`
+  const localizedDefault = `${t('Room (singular)')} ${index + 1}`
+  return !name || name === defaultName || name === localizedDefault ? localizedDefault : name
+}
+
+function updateRoomName(index: number, event: Event) {
+  if (event.target instanceof HTMLInputElement) roomNames.value[index] = event.target.value
+}
+
+function onLanguageChange(event: Event) {
+  if (!(event.target instanceof HTMLSelectElement)) return
+  const selectedLanguage = event.target.value
+  if (selectedLanguage === 'en' || selectedLanguage === 'de') setLanguage(selectedLanguage)
+}
+
 function clearPlan() {
-  if (!window.confirm('Start a new empty room plan? This will remove all placed items, walls, and measurements.')) return
+  if (!window.confirm(t('Start a new empty room plan? This will remove all placed items, walls, and measurements.'))) return
   items.value = []
   wallSegments.value = []
   measurements.value = []
@@ -1444,10 +1461,10 @@ onMounted(() => {
             : `Room ${index + 1}`)
         nextId.value = Math.max(10, ...items.value.map((item) => item.id + 1), ...wallSegments.value.map((wall) => wall.id + 1), ...measurements.value.map((measurement) => measurement.id + 1))
       } else {
-        console.warn('Saved room plan has an invalid structure and was not restored.')
+        console.warn(t('Saved room plan has an invalid structure and was not restored.'))
       }
     } catch (error) {
-      console.error('Could not restore the saved room plan.', error)
+      console.error(t('Could not restore the saved room plan.'), error)
     }
   }
 })
@@ -1478,30 +1495,30 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
 <template>
   <main class="app-shell">
     <aside v-if="sidebarOpen" class="sidebar">
-      <a class="brand" href="#" aria-label="Floorwise home">
+      <a class="brand" href="#" :aria-label="`Floorwise ${t('home')}`">
         <span class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 15.5 16 6l11 9.5v10H5v-10Z"/><path d="M12 25.5v-8h8v8"/></svg></span>
-        <span>floorwise<span class="brand-period">.</span><small>YOUR SPACE, REIMAGINED</small></span>
+        <span>floorwise<span class="brand-period">.</span><small>{{ t('YOUR SPACE, REIMAGINED') }}</small></span>
       </a>
       <div class="sidebar-scroll">
         <div class="sidebar-section project-section">
-          <div class="section-eyebrow">YOUR PROJECT</div>
-          <button class="project-select" :aria-expanded="projectMenuOpen" aria-haspopup="menu" @click="projectMenuOpen = !projectMenuOpen"><span class="project-avatar">M</span><span class="project-copy"><strong>My apartment</strong><small>Personal floorplan</small></span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
+          <div class="section-eyebrow">{{ t('YOUR PROJECT') }}</div>
+          <button class="project-select" :aria-expanded="projectMenuOpen" aria-haspopup="menu" @click="projectMenuOpen = !projectMenuOpen"><span class="project-avatar">M</span><span class="project-copy"><strong>{{ t('My apartment') }}</strong><small>{{ t('Personal floorplan') }}</small></span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
           <div v-if="projectMenuOpen" class="project-menu" role="menu">
-            <button role="menuitem" @click="beginRoomDrawing">Start a new floorplan</button>
+            <button role="menuitem" @click="beginRoomDrawing">{{ t('Start a new floorplan') }}</button>
           </div>
         </div>
 
         <div class="sidebar-section room-section">
-          <div class="section-heading"><span class="section-eyebrow">FLOORPLAN</span></div>
+          <div class="section-heading"><span class="section-eyebrow">{{ t('FLOORPLAN') }}</span></div>
           <div v-for="(room, index) in allRooms" :key="`room-${index}`" class="room-entry">
             <div class="room-row active-room">
               <span class="room-dot"></span>
-              <input v-model="roomNames[index]" class="room-name-input" :aria-label="`Room ${index + 1} name`" :placeholder="`Room ${index + 1}`">
-              <span class="room-item-count" :aria-label="`${roomItems[index]?.items.length || 0} furniture and objects`">{{ roomItems[index]?.items.length || 0 }}</span>
+              <input :value="roomDisplayName(roomNames[index], index)" class="room-name-input" :aria-label="`${roomDisplayName(undefined, index)} ${t('name')}`" :placeholder="roomDisplayName(undefined, index)" @input="updateRoomName(index, $event)">
+              <span class="room-item-count" :aria-label="`${roomItems[index]?.items.length || 0} ${t('furniture and objects')}`">{{ roomItems[index]?.items.length || 0 }}</span>
               <button
                 class="room-expand-button"
                 :aria-expanded="isRoomItemListExpanded(index)"
-                :aria-label="`${isRoomItemListExpanded(index) ? 'Collapse' : 'Expand'} furniture and objects for ${roomNames[index] || `Room ${index + 1}`}`"
+                :aria-label="`${t(isRoomItemListExpanded(index) ? 'Collapse' : 'Expand')} ${t('furniture and objects')} ${t('for')} ${roomDisplayName(roomNames[index], index)}`"
                 :disabled="!roomItems[index]?.items.length"
                 @click="toggleRoomItemList(index)"
               >
@@ -1511,29 +1528,29 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
             </div>
             <div v-if="isRoomItemListExpanded(index) && roomItems[index]?.items.length" class="room-item-list">
               <div v-for="item in roomItems[index]!.items" :key="item.id" class="placed-row" :class="{ 'placed-active': selectedId === item.id }">
-                <button class="placed-select" :aria-label="`Select ${item.name || itemLabel(item.kind)}`" @click="selectedId = item.id">
+                <button class="placed-select" :aria-label="`${t('Select')} ${item.name || t(itemLabel(item.kind))}`" @click="selectedId = item.id">
                   <span class="placed-dot" :style="{ background: item.color || itemColor(item.kind) }"></span>
                   <span class="placed-dim">{{ item.width }} × {{ item.depth }}</span>
                 </button>
                 <input
                   v-model="item.name"
                   class="placed-name-input"
-                  :aria-label="`${itemLabel(item.kind)} name`"
-                  :placeholder="itemLabel(item.kind)"
+                  :aria-label="`${t(itemLabel(item.kind))} ${t('name')}`"
+                  :placeholder="t(itemLabel(item.kind))"
                   @click.stop
                   @focus="selectedId = item.id"
                 >
               </div>
             </div>
           </div>
-          <div v-if="!allRooms.length" class="room-row muted-room"><span class="room-dot empty-dot"></span><span>No floorplan drawn</span></div>
-          <button class="room-row muted-room" :disabled="!allRooms.length" @click="beginRoomAddition"><span class="room-dot empty-dot"></span><span>+ Add a room</span></button>
+          <div v-if="!allRooms.length" class="room-row muted-room"><span class="room-dot empty-dot"></span><span>{{ t('No floorplan drawn') }}</span></div>
+          <button class="room-row muted-room" :disabled="!allRooms.length" @click="beginRoomAddition"><span class="room-dot empty-dot"></span><span>{{ t('+ Add a room') }}</span></button>
         </div>
 
         <div class="sidebar-section furniture-section">
-          <div class="section-heading"><span class="section-eyebrow">FURNITURE & OBJECTS</span><span class="count-pill">{{ categoryItems.length }}</span></div>
+          <div class="section-heading"><span class="section-eyebrow">{{ t('FURNITURE & OBJECTS') }}</span><span class="count-pill">{{ categoryItems.length }}</span></div>
           <div class="category-switcher">
-            <button v-for="category in ['All items', 'Furniture', 'Misc']" :key="category" :class="{ active: selectedCategory === category }" :aria-pressed="selectedCategory === category" @click="selectedCategory = category">{{ category }}</button>
+            <button v-for="category in ['All items', 'Furniture', 'Misc']" :key="category" :class="{ active: selectedCategory === category }" :aria-pressed="selectedCategory === category" @click="selectedCategory = category">{{ t(category) }}</button>
           </div>
           <div class="catalog-grid">
             <button v-for="entry in categoryItems" :key="entry.kind" class="catalog-card" :disabled="!roomPoints.length" @click="addCatalogItem(entry.kind)">
@@ -1544,13 +1561,13 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
                 <svg v-else-if="entry.kind === 'shelf'" viewBox="0 0 42 42"><path d="M11 7h20v29H11zm-3 9h26m-26 9h26m-26 9h26M14 11h3m8 0h3m-14 9h3m8 0h3m-14 9h3m8 0h3"/></svg>
                 <svg v-else viewBox="0 0 42 42"><path d="m8 13 13-7 13 7v16l-13 7-13-7V13Zm0 0 13 7 13-7m-13 7v16m-6-26 13 7"/></svg>
               </span>
-              <strong>{{ entry.label }}</strong><small>{{ entry.detail }}</small>
+              <strong>{{ t(entry.label) }}</strong><small>{{ entry.detail }}</small>
               <span class="catalog-plus">+</span>
             </button>
           </div>
-          <div class="section-heading structure-heading"><span class="section-eyebrow">WALL DETAILS</span><span class="count-pill">{{ wallDetailItems.length }}</span></div>
+          <div class="section-heading structure-heading"><span class="section-eyebrow">{{ t('WALL DETAILS') }}</span><span class="count-pill">{{ wallDetailItems.length }}</span></div>
           <div class="category-switcher">
-            <button v-for="category in wallDetailCategories" :key="category" :class="{ active: selectedWallCategory === category }" :aria-pressed="selectedWallCategory === category" @click="selectedWallCategory = category">{{ category }}</button>
+            <button v-for="category in wallDetailCategories" :key="category" :class="{ active: selectedWallCategory === category }" :aria-pressed="selectedWallCategory === category" @click="selectedWallCategory = category">{{ t(category) }}</button>
           </div>
           <div class="catalog-grid">
             <button v-for="kind in wallDetailItems" :key="kind" class="catalog-card" :disabled="!roomPoints.length" @click="addItem(kind)">
@@ -1558,44 +1575,48 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
                 <svg v-if="kind === 'window'" viewBox="0 0 42 42"><path d="M7 10h28v22H7zM7 16h28M21 10v22M11 13h6m8 0h6"/></svg>
                 <svg v-else viewBox="0 0 42 42"><path d="M9 35V7h24v28M9 35h24M14 35V12h14v23m-5-12h1"/></svg>
               </span>
-              <strong>{{ kind === 'window' ? 'Window' : 'Door' }}</strong>
+              <strong>{{ t(kind === 'window' ? 'Window' : 'Door') }}</strong>
               <small>{{ kind === 'window' ? '110 × 12 cm' : '90 × 15 cm' }}</small>
               <span class="catalog-plus">+</span>
             </button>
           </div>
-          <div class="import-card import-planned" aria-disabled="true"><span class="import-icon">↥</span><span><strong>Import 3D model</strong><small>Model import coming soon</small></span></div>
+          <div class="import-card import-planned" aria-disabled="true"><span class="import-icon">↥</span><span><strong>{{ t('Import 3D model') }}</strong><small>{{ t('Model import coming soon') }}</small></span></div>
         </div>
 
       </div>
-      <div class="sidebar-bottom"><div class="avatar">J</div><span><strong>Jan's workspace</strong><small>Personal plan</small></span><button class="icon-button more-button" aria-label="More options">···</button></div>
+      <div class="sidebar-bottom"><div class="avatar"></div><span><strong>{{ t('Your workspace') }}</strong><small>{{ t('Personal plan') }}</small></span><button class="icon-button more-button" :aria-label="t('More options')">···</button></div>
     </aside>
 
     <section class="workspace">
       <header class="topbar">
-        <div class="breadcrumbs"><button class="mobile-menu icon-button" aria-label="Toggle sidebar" @click="sidebarOpen = !sidebarOpen">☰</button><span>My apartment</span><span class="saved-state"><span></span> All changes saved</span></div>
+        <div class="breadcrumbs"><button class="mobile-menu icon-button" :aria-label="t('Toggle sidebar')" @click="sidebarOpen = !sidebarOpen">☰</button><span>{{ t('My apartment') }}</span><span class="saved-state"><span></span> {{ t('All changes saved') }}</span></div>
         <div class="top-actions">
-          <button class="top-icon disabled-icon" title="Undo is not available yet" aria-label="Undo" disabled>↶</button><button class="top-icon disabled-icon" title="Redo is not available yet" aria-label="Redo" disabled>↷</button>
-          <span class="action-divider"></span><button class="export-button" @click="exportPlan">Export JSON <span>↗</span></button>
+          <select class="language-switch" :value="language" :aria-label="t('Change language')" :title="t('Change language')" @change="onLanguageChange">
+            <option value="en">{{ t('English') }}</option>
+            <option value="de">{{ t('German') }}</option>
+          </select>
+          <button class="top-icon disabled-icon" :title="t('Undo is not available yet')" :aria-label="t('Undo')" disabled>↶</button><button class="top-icon disabled-icon" :title="t('Redo is not available yet')" :aria-label="t('Redo')" disabled>↷</button>
+          <span class="action-divider"></span><button class="export-button" @click="exportPlan">{{ t('Export JSON') }} <span>↗</span></button>
         </div>
       </header>
       <div class="toolbar-row">
-        <div class="view-switch"><button :class="{ selected: view === '2d' }" @click="view = '2d'"><span class="view-2d-icon">▦</span>2D plan</button><button :class="{ selected: view === '3d' }" @click="view = '3d'"><span class="view-3d-icon">◇</span>3D view</button></div>
+        <div class="view-switch"><button :class="{ selected: view === '2d' }" @click="view = '2d'"><span class="view-2d-icon">▦</span>{{ t('2D plan') }}</button><button :class="{ selected: view === '3d' }" @click="view = '3d'"><span class="view-3d-icon">◇</span>{{ t('3D view') }}</button></div>
         <div v-if="view === '2d'" class="tool-actions">
-          <span class="tool-hint" v-if="activeTool === 'room'">10° angle snap · Shift for free angle · Click near start to close</span>
-          <span class="tool-hint" v-else-if="activeTool === 'addRoom'">Attach to existing walls · Shift for free angles</span>
-          <span class="tool-hint" v-else-if="activeTool === 'measure'">Click two points to measure</span>
-          <button class="tool-button" :class="{ 'tool-active': activeTool === 'select' }" title="Select and move" @click="selectTool('select')"><svg viewBox="0 0 20 20"><path d="m5 3 10 8-5 .7-2.5 5L5 3Z"/></svg></button>
-          <button class="tool-button" :class="{ 'tool-active': activeTool === 'addRoom' }" title="Add room" aria-label="Add room" :disabled="!allRooms.length" @click="beginRoomAddition"><svg viewBox="0 0 20 20"><path d="M3 4h8v8H3zM11 8h6v8h-6zM6 7h2m6 5h2"/></svg></button>
-          <button class="tool-button" :class="{ 'tool-active': activeTool === 'measure' }" title="Measure length" @click="selectTool('measure')"><svg viewBox="0 0 20 20"><path d="M4 14 14 4l3 3L7 17l-3-3Zm3-1 2 2m1-5 2 2m1-5 2 2"/></svg></button>
+          <span class="tool-hint" v-if="activeTool === 'room'">{{ t('10° angle snap · Shift for free angle · Click near start to close') }}</span>
+          <span class="tool-hint" v-else-if="activeTool === 'addRoom'">{{ t('Attach to existing walls · Shift for free angles') }}</span>
+          <span class="tool-hint" v-else-if="activeTool === 'measure'">{{ t('Click two points to measure') }}</span>
+          <button class="tool-button" :class="{ 'tool-active': activeTool === 'select' }" :title="t('Select and move')" @click="selectTool('select')"><svg viewBox="0 0 20 20"><path d="m5 3 10 8-5 .7-2.5 5L5 3Z"/></svg></button>
+          <button class="tool-button" :class="{ 'tool-active': activeTool === 'addRoom' }" :title="t('Add room')" :aria-label="t('Add room')" :disabled="!allRooms.length" @click="beginRoomAddition"><svg viewBox="0 0 20 20"><path d="M3 4h8v8H3zM11 8h6v8h-6zM6 7h2m6 5h2"/></svg></button>
+          <button class="tool-button" :class="{ 'tool-active': activeTool === 'measure' }" :title="t('Measure length')" @click="selectTool('measure')"><svg viewBox="0 0 20 20"><path d="M4 14 14 4l3 3L7 17l-3-3Zm3-1 2 2m1-5 2 2m1-5 2 2"/></svg></button>
           <span class="toolbar-divider"></span>
-          <button class="tool-button" :class="{ 'tool-active': showGrid }" title="Toggle grid" @click="showGrid = !showGrid"><svg viewBox="0 0 20 20"><path d="M4 4h12v12H4zM4 10h12M10 4v12"/></svg></button>
-          <button class="tool-button" :class="{ 'tool-active': showDimensions }" title="Toggle room dimensions and names" aria-label="Toggle room dimensions and names" @click="showDimensions = !showDimensions"><svg viewBox="0 0 20 20"><path d="M4 10h12m-3-3 3 3-3 3M7 7l-3 3 3 3"/></svg></button>
-          <button class="tool-button" :class="{ 'tool-active': showCustomMeasurements }" title="Toggle custom measurements" aria-label="Toggle custom measurements" @click="showCustomMeasurements = !showCustomMeasurements"><svg viewBox="0 0 20 20"><path d="M3 15 15 3l2 2L5 17H3v-2Zm3-1 2 2m2-6 2 2m2-6 2 2"/></svg></button>
-          <span class="toolbar-divider"></span><button class="zoom-button" aria-label="Zoom out" @click="changeZoom(-0.1)">−</button><span class="zoom-level">{{ Math.round(zoom * 100) }}%</span><button class="zoom-button" aria-label="Zoom in" @click="changeZoom(0.1)">+</button>
+          <button class="tool-button" :class="{ 'tool-active': showGrid }" :title="t('Toggle grid')" @click="showGrid = !showGrid"><svg viewBox="0 0 20 20"><path d="M4 4h12v12H4zM4 10h12M10 4v12"/></svg></button>
+          <button class="tool-button" :class="{ 'tool-active': showDimensions }" :title="t('Toggle room dimensions and names')" :aria-label="t('Toggle room dimensions and names')" @click="showDimensions = !showDimensions"><svg viewBox="0 0 20 20"><path d="M4 10h12m-3-3 3 3-3 3M7 7l-3 3 3 3"/></svg></button>
+          <button class="tool-button" :class="{ 'tool-active': showCustomMeasurements }" :title="t('Toggle custom measurements')" :aria-label="t('Toggle custom measurements')" @click="showCustomMeasurements = !showCustomMeasurements"><svg viewBox="0 0 20 20"><path d="M3 15 15 3l2 2L5 17H3v-2Zm3-1 2 2m2-6 2 2m2-6 2 2"/></svg></button>
+          <span class="toolbar-divider"></span><button class="zoom-button" :aria-label="t('Zoom out')" @click="changeZoom(-0.1)">−</button><span class="zoom-level">{{ Math.round(zoom * 100) }}%</span><button class="zoom-button" :aria-label="t('Zoom in')" @click="changeZoom(0.1)">+</button>
         </div>
       </div>
       <div class="canvas-area">
-        <div class="canvas-label"><span class="canvas-status"></span> {{ view === '2d' ? 'FLOOR PLAN' : 'INTERACTIVE 3D' }} <span class="label-divider">·</span> {{ view === '2d' ? (allRooms.length > 1 ? `${allRooms.length} ROOMS` : roomNames[0]?.toUpperCase() || 'NO FLOORPLAN') : 'DRAG TO ORBIT' }}</div>
+        <div class="canvas-label"><span class="canvas-status"></span> {{ t(view === '2d' ? 'FLOOR PLAN' : 'INTERACTIVE 3D') }} <span class="label-divider">·</span> {{ view === '2d' ? (allRooms.length > 1 ? `${allRooms.length} ${t('ROOMS')}` : roomDisplayName(roomNames[0], 0).toUpperCase()) : t('DRAG TO ORBIT') }}</div>
         <div ref="canvasCard" class="canvas-card" :class="{ 'immersive-card': view === '3d' }" @wheel="onCanvasWheel">
           <svg v-if="view === '2d'" class="plan-svg" :class="{ 'is-panning': isPanning }" :viewBox="planViewBox" @click="onCanvasClick" @pointerdown="onCanvasPointerDown" @pointermove="onCanvasPointerMove" @pointerup="stopDragging" @pointercancel="stopDragging" @lostpointercapture="stopDragging" @contextmenu="onCanvasContextMenu">
             <defs>
@@ -1611,7 +1632,7 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
                 <text v-for="dimension in roomDimensionLabels" :key="`room-dimension-${dimension.id}`" :x="dimension.label.x" :y="dimension.label.y" text-anchor="middle" :transform="fixedSizeLabelTransform(dimension.label, dimension.labelAngle)">{{ dimension.text }}</text>
               </g>
               <g v-for="(labelPoint, index) in roomLabelPoints" :key="`room-name-${index}`" :transform="fixedSizeGroupTransform(labelPoint)" class="room-plan-label">
-                <text text-anchor="middle" class="room-name-label">{{ roomNames[index] || `Room ${index + 1}` }}</text>
+                <text text-anchor="middle" class="room-name-label">{{ roomDisplayName(roomNames[index], index) }}</text>
                 <text y="15" text-anchor="middle" class="room-area-label">{{ (roomAreaFor(allRooms[index]!) / SCALE ** 2).toFixed(1) }} m²</text>
               </g>
             </g>
@@ -1640,7 +1661,7 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
                 :transform="`${fixedSizeGroupTransform({ x: (measurement.start.x + measurement.end.x) / 2, y: (measurement.start.y + measurement.end.y) / 2 })} translate(40 -17)`"
                 role="button"
                 tabindex="0"
-                :aria-label="`Delete ${formatLength(measurement.start, measurement.end)} measurement`"
+                :aria-label="`${t('Delete')} ${formatLength(measurement.start, measurement.end)} ${t('measurement')}`"
                 @pointerenter="showMeasurementDelete(measurement.id)"
                 @pointerleave="hideMeasurementDeleteLater(measurement.id)"
                 @pointerdown.stop
@@ -1648,7 +1669,7 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
                 @keydown.enter.stop.prevent="removeMeasurement(measurement.id)"
                 @keydown.space.stop.prevent="removeMeasurement(measurement.id)"
               >
-                <title>Delete measurement</title>
+                <title>{{ t('Delete measurement') }}</title>
                 <circle r="12" fill="transparent"/>
                 <circle r="10" fill="#fff" stroke="#d8e3da"/>
                 <path d="m-3-3 6 6m0-6-6 6" stroke="#a45e55" stroke-width="1.8" stroke-linecap="round"/>
@@ -1675,8 +1696,8 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
                   <text y="3" text-anchor="middle" class="measure-label">{{ roomDraftMeasurement.text }}</text>
                 </g>
               </g>
-              <text v-if="drawingCursorClosesRoom" :x="drawingCursor?.x" :y="(drawingCursor?.y || 0) - 14" :transform="fixedSizeLabelTransform({ x: drawingCursor?.x || 0, y: (drawingCursor?.y || 0) - 14 })" text-anchor="middle" fill="#4f8063" font-size="10" font-weight="700">{{ activeTool === 'addRoom' ? 'FINISH ON WALL' : 'CLOSE ROOM' }}</text>
-              <text v-else-if="activeTool === 'addRoom' && !drawingRoomPoints.length && drawingCursorSnapsToWall" :x="drawingCursor?.x" :y="(drawingCursor?.y || 0) - 14" :transform="fixedSizeLabelTransform({ x: drawingCursor?.x || 0, y: (drawingCursor?.y || 0) - 14 })" text-anchor="middle" fill="#4f8063" font-size="10" font-weight="700">START HERE</text>
+              <text v-if="drawingCursorClosesRoom" :x="drawingCursor?.x" :y="(drawingCursor?.y || 0) - 14" :transform="fixedSizeLabelTransform({ x: drawingCursor?.x || 0, y: (drawingCursor?.y || 0) - 14 })" text-anchor="middle" fill="#4f8063" font-size="10" font-weight="700">{{ t(activeTool === 'addRoom' ? 'FINISH ON WALL' : 'CLOSE ROOM') }}</text>
+              <text v-else-if="activeTool === 'addRoom' && !drawingRoomPoints.length && drawingCursorSnapsToWall" :x="drawingCursor?.x" :y="(drawingCursor?.y || 0) - 14" :transform="fixedSizeLabelTransform({ x: drawingCursor?.x || 0, y: (drawingCursor?.y || 0) - 14 })" text-anchor="middle" fill="#4f8063" font-size="10" font-weight="700">{{ t('START HERE') }}</text>
             </g>
             <g v-for="item in items" :key="item.id" class="plan-item" :class="{ 'is-selected': selectedId === item.id, 'is-dragging': isDragging && selectedId === item.id }" :transform="`translate(${item.x} ${item.y}) rotate(${item.rotation})`" @pointerdown="itemPointerDown($event, item)" @click.stop="selectedId = item.id">
               <g v-if="item.kind === 'chair'" filter="url(#soft-shadow)">
@@ -1721,11 +1742,11 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
                 @pointerdown="rotationHandlePointerDown($event, item)"
                 @click.stop
               >
-                <title>Drag to rotate · 10° steps · hold Shift for 1° steps</title>
+                <title>{{ t('Drag to rotate · 10° steps · hold Shift for 1° steps') }}</title>
                 <circle r="11" fill="#fff" stroke="#668774" stroke-width="1.5"/>
                 <path d="M-4.7-4.7a6.7 6.7 0 1 1-1.8 6.9M-6.2-6.4v3.8h3.8" fill="none" stroke="#668774" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
               </g>
-              <title>{{ item.name || itemLabel(item.kind) }} · {{ item.width }} × {{ item.depth }} cm</title>
+              <title>{{ item.name || t(itemLabel(item.kind)) }} · {{ item.width }} × {{ item.depth }} cm</title>
             </g>
             <g v-for="measurement in (showDimensions ? dragMeasurements : [])" :key="measurement.id" class="drag-measurement" pointer-events="none">
               <line :x1="measurement.start.x" :y1="measurement.start.y" :x2="measurement.end.x" :y2="measurement.end.y" stroke="#4f8063" stroke-width="1.5" stroke-dasharray="5 4"/>
@@ -1736,7 +1757,7 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
                 <text y="3" text-anchor="middle" class="measure-label">{{ measurement.text }}</text>
               </g>
             </g>
-            <text v-if="roomPoints.length" :x="roomBounds.x + roomBounds.width / 2" :y="roomBounds.y + roomBounds.height + 35" :transform="fixedSizeLabelTransform({ x: roomBounds.x + roomBounds.width / 2, y: roomBounds.y + roomBounds.height + 35 })" text-anchor="middle" class="room-caption">{{ allRooms.length }} {{ allRooms.length === 1 ? 'ROOM' : 'ROOMS' }} · {{ totalArea }} M²</text>
+            <text v-if="roomPoints.length" :x="roomBounds.x + roomBounds.width / 2" :y="roomBounds.y + roomBounds.height + 35" :transform="fixedSizeLabelTransform({ x: roomBounds.x + roomBounds.width / 2, y: roomBounds.y + roomBounds.height + 35 })" text-anchor="middle" class="room-caption">{{ allRooms.length }} {{ t(allRooms.length === 1 ? 'ROOM' : 'ROOMS') }} · {{ totalArea }} M²</text>
           </svg>
 
           <ClientOnly v-else>
@@ -1753,36 +1774,36 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
             />
           </ClientOnly>
           <div v-if="activeTool === 'room' || activeTool === 'addRoom'" class="room-draw-banner">
-            <div><strong>{{ activeTool === 'addRoom' ? 'Add a room' : 'Draw your first room or draw the outline of your flat' }}</strong><span>{{ activeTool === 'addRoom' ? 'Start and finish on existing walls. The old boundary between them becomes a shared wall.' : 'Click each corner around the floorplan. Add at least 3 corners.' }}</span><small v-if="roomDrawingError">{{ roomDrawingError }}</small></div>
-            <span class="corner-count">{{ drawingRoomPoints.length }} corners</span>
-            <button class="room-cancel-button" @click="cancelActiveCanvasAction">Cancel</button>
-            <button v-if="activeTool === 'room'" class="room-finish-button" :disabled="drawingRoomPoints.length < 3" @click="finishRoomDrawing">Finish room</button>
+            <div><strong>{{ t(activeTool === 'addRoom' ? 'Add a room' : 'Draw your first room or draw the outline of your flat') }}</strong><span>{{ t(activeTool === 'addRoom' ? 'Start and finish on existing walls. The old boundary between them becomes a shared wall.' : 'Click each corner around the floorplan. Add at least 3 corners.') }}</span><small v-if="roomDrawingError">{{ t(roomDrawingError) }}</small></div>
+            <span class="corner-count">{{ drawingRoomPoints.length }} {{ t('corners') }}</span>
+            <button class="room-cancel-button" @click="cancelActiveCanvasAction">{{ t('Cancel') }}</button>
+            <button v-if="activeTool === 'room'" class="room-finish-button" :disabled="drawingRoomPoints.length < 3" @click="finishRoomDrawing">{{ t('Finish room') }}</button>
           </div>
           <template v-if="view === '2d'">
             <div class="canvas-compass"><span>N</span><svg viewBox="0 0 20 28"><path d="M10 2 16 25 10 20 4 25 10 2Z" fill="#628c75"/></svg></div>
             <div class="canvas-scale"><span class="scale-line" :style="{ width: `${scaleBar.width}px` }"></span><span>{{ scaleBar.label }}</span></div>
           </template>
         </div>
-        <div class="canvas-footer"><span v-if="view === '2d'"><span class="keyboard-hint">⌘</span> + scroll to zoom</span><span v-else>Drag to orbit · right-drag to pan · scroll to zoom</span><span class="footer-separator">·</span><span>{{ placedCount }} objects</span><span class="footer-separator">·</span><span>{{ totalArea }} m² floor area</span><span class="footer-spacer"></span><button @click="clearPlan">Reset plan</button></div>
+        <div class="canvas-footer"><span v-if="view === '2d'"><span class="keyboard-hint">⌘</span> + {{ t('scroll to zoom') }}</span><span v-else>{{ t('Drag to orbit · right-drag to pan · scroll to zoom') }}</span><span class="footer-separator">·</span><span>{{ placedCount }} {{ t('objects') }}</span><span class="footer-separator">·</span><span>{{ totalArea }} m² {{ t('floor area') }}</span><span class="footer-spacer"></span><button @click="clearPlan">{{ t('Reset plan') }}</button></div>
       </div>
       <aside v-if="selectedItem" class="inspector">
-        <div class="inspector-heading"><div><span class="section-eyebrow">SELECTED OBJECT</span><input v-model="selectedItem.name" class="inspector-title-input" :aria-label="`Name for ${itemLabel(selectedItem.kind)}`" :placeholder="itemLabel(selectedItem.kind)"></div><button class="icon-button" aria-label="Close inspector" @click="selectedId = null">×</button></div>
-        <div class="property-row"><label class="property-label">Width <span>cm</span><input v-model.number="selectedItem.width" type="number" min="1"></label><label class="property-label">Depth <span>cm</span><input v-model.number="selectedItem.depth" type="number" min="1"></label></div>
-        <div class="property-row"><label class="property-label">Height <span>cm</span><input v-model.number="selectedItem.height" type="number" min="1"></label><label class="property-label">Rotation <span>°</span><input :value="selectedItem.rotation" type="number" readonly></label></div>
-        <label class="property-label">Distance from floor <span>cm</span><input v-model.number="selectedItem.floorOffset" type="number" min="0" step="1"></label>
-        <button class="rotate-button" @click="rotateSelected">↻ <span>Rotate 90°</span></button>
-        <button class="delete-button" @click="removeSelected">Remove object</button>
+        <div class="inspector-heading"><div><span class="section-eyebrow">{{ t('SELECTED OBJECT') }}</span><input v-model="selectedItem.name" class="inspector-title-input" :aria-label="`${t('Name for')} ${t(itemLabel(selectedItem.kind))}`" :placeholder="t(itemLabel(selectedItem.kind))"></div><button class="icon-button" :aria-label="t('Close inspector')" @click="selectedId = null">×</button></div>
+        <div class="property-row"><label class="property-label">{{ t('Width') }} <span>cm</span><input v-model.number="selectedItem.width" type="number" min="1"></label><label class="property-label">{{ t('Depth') }} <span>cm</span><input v-model.number="selectedItem.depth" type="number" min="1"></label></div>
+        <div class="property-row"><label class="property-label">{{ t('Height') }} <span>cm</span><input v-model.number="selectedItem.height" type="number" min="1"></label><label class="property-label">{{ t('Rotation') }} <span>°</span><input :value="selectedItem.rotation" type="number" readonly></label></div>
+        <label class="property-label">{{ t('Distance from floor') }} <span>cm</span><input v-model.number="selectedItem.floorOffset" type="number" min="0" step="1"></label>
+        <button class="rotate-button" @click="rotateSelected">↻ <span>{{ t('Rotate 90°') }}</span></button>
+        <button class="delete-button" @click="removeSelected">{{ t('Remove object') }}</button>
       </aside>
-      <div v-if="activeTool === 'cube' && view === '2d'" class="placement-tip">Click anywhere in the room to place your cube <button @click="selectTool('select')">Cancel</button></div>
+      <div v-if="activeTool === 'cube' && view === '2d'" class="placement-tip">{{ t('Click anywhere in the room to place your cube') }} <button @click="selectTool('select')">{{ t('Cancel') }}</button></div>
     </section>
     <div v-if="showNewFloorplanConfirmation" class="confirmation-backdrop" @click.self="cancelNewFloorplan">
       <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="new-floorplan-title" aria-describedby="new-floorplan-description">
-        <span class="section-eyebrow">NEW FLOORPLAN</span>
-        <h2 id="new-floorplan-title">Start a new floorplan?</h2>
-        <p id="new-floorplan-description">Your current floorplan, including its room outline, furniture, walls, and measurements, will be cleared.</p>
+        <span class="section-eyebrow">{{ t('NEW FLOORPLAN') }}</span>
+        <h2 id="new-floorplan-title">{{ t('Start a new floorplan?') }}</h2>
+        <p id="new-floorplan-description">{{ t('Your current floorplan, including its room outline, furniture, walls, and measurements, will be cleared.') }}</p>
         <div class="confirmation-actions">
-          <button class="confirmation-cancel" @click="cancelNewFloorplan">Cancel</button>
-          <button class="confirmation-accept" @click="confirmNewFloorplan">Clear floorplan</button>
+          <button class="confirmation-cancel" @click="cancelNewFloorplan">{{ t('Cancel') }}</button>
+          <button class="confirmation-accept" @click="confirmNewFloorplan">{{ t('Clear floorplan') }}</button>
         </div>
       </section>
     </div>

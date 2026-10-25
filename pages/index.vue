@@ -1143,10 +1143,9 @@ function finishRoomDrawing() {
 }
 
 function beginRoomAddition() {
-  if (!allRooms.value.length) return
   clearCanvasDraft()
   selectedId.value = null
-  activeTool.value = 'addRoom'
+  activeTool.value = allRooms.value.length ? 'addRoom' : 'room'
   view.value = '2d'
 }
 
@@ -1544,7 +1543,7 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
             </div>
           </div>
           <div v-if="!allRooms.length" class="room-row muted-room"><span class="room-dot empty-dot"></span><span>{{ t('No floorplan drawn') }}</span></div>
-          <button class="room-row muted-room" :disabled="!allRooms.length" @click="beginRoomAddition"><span class="room-dot empty-dot"></span><span>{{ t('+ Add a room') }}</span></button>
+          <button class="room-row muted-room" @click="beginRoomAddition"><span class="room-dot empty-dot"></span><span>{{ t(allRooms.length ? '+ Add a room' : 'Draw your first room') }}</span></button>
         </div>
 
         <div class="sidebar-section furniture-section">
@@ -1606,7 +1605,7 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
           <span class="tool-hint" v-else-if="activeTool === 'addRoom'">{{ t('Attach to existing walls · Shift for free angles') }}</span>
           <span class="tool-hint" v-else-if="activeTool === 'measure'">{{ t('Click two points to measure') }}</span>
           <button class="tool-button" :class="{ 'tool-active': activeTool === 'select' }" :title="t('Select and move')" @click="selectTool('select')"><svg viewBox="0 0 20 20"><path d="m5 3 10 8-5 .7-2.5 5L5 3Z"/></svg></button>
-          <button class="tool-button" :class="{ 'tool-active': activeTool === 'addRoom' }" :title="t('Add room')" :aria-label="t('Add room')" :disabled="!allRooms.length" @click="beginRoomAddition"><svg viewBox="0 0 20 20"><path d="M3 4h8v8H3zM11 8h6v8h-6zM6 7h2m6 5h2"/></svg></button>
+          <button class="tool-button" :class="{ 'tool-active': activeTool === 'addRoom' || activeTool === 'room' }" :title="t(allRooms.length ? 'Add room' : 'Draw room')" :aria-label="t(allRooms.length ? 'Add room' : 'Draw room')" @click="beginRoomAddition"><svg viewBox="0 0 20 20"><path d="M3 4h8v8H3zM11 8h6v8h-6zM6 7h2m6 5h2"/></svg></button>
           <button class="tool-button" :class="{ 'tool-active': activeTool === 'measure' }" :title="t('Measure length')" @click="selectTool('measure')"><svg viewBox="0 0 20 20"><path d="M4 14 14 4l3 3L7 17l-3-3Zm3-1 2 2m1-5 2 2m1-5 2 2"/></svg></button>
           <span class="toolbar-divider"></span>
           <button class="tool-button" :class="{ 'tool-active': showGrid }" :title="t('Toggle grid')" @click="showGrid = !showGrid"><svg viewBox="0 0 20 20"><path d="M4 4h12v12H4zM4 10h12M10 4v12"/></svg></button>

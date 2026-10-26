@@ -142,7 +142,10 @@
     "NEW FLOORPLAN": "NEUER GRUNDRISS",
     "Start a new floorplan?": "Neuen Grundriss beginnen?",
     "Your current floorplan, including its room outline, furniture, walls, and measurements, will be cleared.": "Dein aktueller Grundriss mit Räumen, Möbeln, Wänden und Messungen wird gelöscht.",
-    "Clear floorplan": "Grundriss löschen"
+    "Clear floorplan": "Grundriss löschen",
+    "RESET PLAN": "PLAN ZURÜCKSETZEN",
+    "Reset plan?": "Plan zurücksetzen?",
+    "This will remove all placed items, walls, and measurements.": "Dadurch werden alle platzierten Elemente, Wände und Messungen entfernt."
   },
   "tutorial": {
     "App tutorial": "App-Tutorial",
@@ -211,7 +214,6 @@
     "Finish on a wall connected to the wall where the room started.": "Beende an einer Wand, die mit der Startwand des Raums verbunden ist.",
     "A new wall cannot cross an existing wall.": "Eine neue Wand darf keine vorhandene Wand kreuzen.",
     "The new room would overlap an existing room or wall.": "Der neue Raum würde einen vorhandenen Raum oder eine Wand überlappen.",
-    "Start a new empty room plan? This will remove all placed items, walls, and measurements.": "Einen neuen leeren Raumplan beginnen? Dadurch werden alle platzierten Elemente, Wände und Messungen entfernt.",
     "Your browser could not start the interactive 3D view. Try updating your browser or enabling hardware acceleration.": "Dein Browser konnte die interaktive 3D-Ansicht nicht starten. Aktualisiere deinen Browser oder aktiviere die Hardwarebeschleunigung.",
     "Could not change the 3D view fullscreen state.": "Der Vollbildmodus der 3D-Ansicht konnte nicht geändert werden.",
     "Could not initialize the interactive 3D room.": "Der interaktive 3D-Raum konnte nicht initialisiert werden.",

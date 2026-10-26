@@ -57,7 +57,7 @@ const drawingCursorSnapsToWall = ref(false)
 const roomDrawingError = ref('')
 const roomCornerError = ref('')
 const roomCornerDrag = ref<RoomCornerDrag | null>(null)
-const showNewFloorplanConfirmation = ref(false)
+const activeConfirmation = ref<'new-floorplan' | 'reset-plan' | null>(null)
 const projectMenuOpen = ref(false)
 const moreMenuOpen = ref(false)
 const changelogOpen = ref(false)
@@ -1283,15 +1283,15 @@ function stopDragging() {
 
 function beginRoomDrawing() {
   projectMenuOpen.value = false
-  showNewFloorplanConfirmation.value = true
+  activeConfirmation.value = 'new-floorplan'
 }
 
-function cancelNewFloorplan() {
-  showNewFloorplanConfirmation.value = false
+function cancelConfirmation() {
+  activeConfirmation.value = null
 }
 
 function confirmNewFloorplan() {
-  showNewFloorplanConfirmation.value = false
+  activeConfirmation.value = null
   items.value = []
   wallSegments.value = []
   measurements.value = []
@@ -1544,11 +1544,20 @@ function openChangelog() {
 }
 
 function clearPlan() {
-  if (!window.confirm(t('Start a new empty room plan? This will remove all placed items, walls, and measurements.'))) return
+  activeConfirmation.value = 'reset-plan'
+}
+
+function confirmResetPlan() {
+  activeConfirmation.value = null
   items.value = []
   wallSegments.value = []
   measurements.value = []
   selectedId.value = null
+}
+
+function confirmActiveAction() {
+  if (activeConfirmation.value === 'new-floorplan') confirmNewFloorplan()
+  else if (activeConfirmation.value === 'reset-plan') confirmResetPlan()
 }
 
 function isEditableKeyboardTarget(target: EventTarget | null) {
@@ -2044,17 +2053,16 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
       </aside>
       <div v-if="activeTool === 'cube' && view === '2d'" class="placement-tip">{{ t('Click anywhere in the room to place your cube') }} <button @click="selectTool('select')">{{ t('Cancel') }}</button></div>
     </section>
-    <div v-if="showNewFloorplanConfirmation" class="confirmation-backdrop" @click.self="cancelNewFloorplan">
-      <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="new-floorplan-title" aria-describedby="new-floorplan-description">
-        <span class="section-eyebrow">{{ t('NEW FLOORPLAN') }}</span>
-        <h2 id="new-floorplan-title">{{ t('Start a new floorplan?') }}</h2>
-        <p id="new-floorplan-description">{{ t('Your current floorplan, including its room outline, furniture, walls, and measurements, will be cleared.') }}</p>
-        <div class="confirmation-actions">
-          <button class="confirmation-cancel" @click="cancelNewFloorplan">{{ t('Cancel') }}</button>
-          <button class="confirmation-accept" @click="confirmNewFloorplan">{{ t('Clear floorplan') }}</button>
-        </div>
-      </section>
-    </div>
+    <AppConfirmationDialog
+      :open="activeConfirmation !== null"
+      :eyebrow="t(activeConfirmation === 'reset-plan' ? 'RESET PLAN' : 'NEW FLOORPLAN')"
+      :title="t(activeConfirmation === 'reset-plan' ? 'Reset plan?' : 'Start a new floorplan?')"
+      :description="t(activeConfirmation === 'reset-plan' ? 'This will remove all placed items, walls, and measurements.' : 'Your current floorplan, including its room outline, furniture, walls, and measurements, will be cleared.')"
+      :cancel-label="t('Cancel')"
+      :confirm-label="t(activeConfirmation === 'reset-plan' ? 'Reset plan' : 'Clear floorplan')"
+      @cancel="cancelConfirmation"
+      @confirm="confirmActiveAction"
+    />
     <AppChangelog :open="changelogOpen" @update:open="changelogOpen = $event" />
     <AppTutorial
       ref="appTutorial"

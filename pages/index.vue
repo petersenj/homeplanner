@@ -832,7 +832,27 @@ function isValidRoomLayout(rooms: Point[][]) {
 
 function removeRoomCorner(corner: Point) {
   if (activeTool.value !== 'select') return
-  const rooms = roomPolygonsWithSharedVertices(allRooms.value)
+  const currentRooms = roomPolygonsWithSharedVertices(allRooms.value)
+  const connectedSegments = [
+    ...currentRooms.flatMap((room) => room.map((start, index) => ({
+      start,
+      end: room[(index + 1) % room.length]!,
+    }))),
+    ...wallSegments.value,
+  ].flatMap(({ start, end }) => {
+    if (samePoint(start, corner)) return [{ start: corner, end }]
+    if (samePoint(end, corner)) return [{ start: corner, end: start }]
+    return []
+  })
+  const uniqueConnectedSegments = connectedSegments.filter((segment, index) =>
+    !connectedSegments.slice(0, index).some((other) =>
+      (samePoint(segment.start, other.start) && samePoint(segment.end, other.end))
+      || (samePoint(segment.start, other.end) && samePoint(segment.end, other.start))))
+  if (uniqueConnectedSegments.length >= 3) {
+    roomCornerError.value = 'Corners where three or more wall segments meet cannot be removed.'
+    return
+  }
+  const rooms = currentRooms
     .map((room) => room.filter((point) => !samePoint(point, corner)))
   if (rooms.some((room) => room.length < 3)) {
     roomCornerError.value = 'A room must have at least three corners.'

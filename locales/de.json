@@ -114,7 +114,12 @@
     "Name for": "Name für",
     "Delete": "Löschen",
     "Delete measurement": "Messung löschen",
-    "measurement": "Messung"
+    "measurement": "Messung",
+    "Drag room corner to reshape": "Raumecke zum Umformen ziehen",
+    "Drag room corner to reshape · right-click to remove": "Raumecke zum Umformen ziehen · mit Rechtsklick entfernen",
+    "Drag corners · click walls to add · right-click corners to remove · right-drag to pan · scroll to zoom": "Ecken ziehen · zum Hinzufügen auf Wände klicken · zum Entfernen rechts auf Ecken klicken · rechts ziehen zum Verschieben · Scrollen zum Zoomen",
+    "A room must have at least three corners.": "Ein Raum muss mindestens drei Ecken haben.",
+    "This corner cannot be removed because it would make the room layout invalid.": "Diese Ecke kann nicht entfernt werden, da dadurch der Grundriss ungültig würde."
   },
   "roomDrawing": {
     "Add a room": "Raum hinzufügen",

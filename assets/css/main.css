@@ -186,6 +186,11 @@ button { color: inherit; cursor: pointer; }
 .plan-svg .plan-item { cursor: grab; }
 .plan-svg .plan-item:active { cursor: grabbing; }
 .plan-svg .plan-item.is-dragging { cursor: grabbing; }
+.room-corner-handle { cursor: grab; }
+.room-corner-handle:active, .room-corner-handle.is-dragging { cursor: grabbing; }
+.room-corner-hit-area { fill: transparent; }
+.room-corner-point { fill: #fff; stroke: #668774; stroke-width: 2.5; }
+.room-corner-handle:hover .room-corner-point, .room-corner-handle.is-dragging .room-corner-point { fill: #dcebe0; }
 .measurement-delete-control { cursor: pointer; }
 .measurement-delete-control:focus-visible { outline: none; filter: drop-shadow(0 0 2px #668774); }
 .room-dimensions text, .measure-label { fill: #77796f; font: 500 10px 'DM Sans', sans-serif; }

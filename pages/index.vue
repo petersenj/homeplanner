@@ -5,6 +5,7 @@ const RoomScene3D = defineAsyncComponent(() => import('~/components/RoomScene3D.
 const { language, setLanguage, t } = useAppLanguage()
 
 type Point = { x: number; y: number }
+type RoomCornerDrag = { corner: Point; pointerStart: Point; rooms: Point[][] }
 type FurnitureKind = 'chair' | 'table' | 'cupboard' | 'shelf' | 'cube' | 'window' | 'door'
 type FurnitureSide = 'top' | 'right' | 'bottom' | 'left'
 type PlanItem = {
@@ -54,6 +55,8 @@ const drawingCursor = ref<Point | null>(null)
 const drawingCursorClosesRoom = ref(false)
 const drawingCursorSnapsToWall = ref(false)
 const roomDrawingError = ref('')
+const roomCornerError = ref('')
+const roomCornerDrag = ref<RoomCornerDrag | null>(null)
 const showNewFloorplanConfirmation = ref(false)
 const projectMenuOpen = ref(false)
 const moreMenuOpen = ref(false)
@@ -151,6 +154,15 @@ const liveMeasurement = computed(() => {
   }
 })
 const allRooms = computed(() => roomPoints.value.length ? [roomPoints.value, ...additionalRoomPoints.value] : [])
+const roomCorners = computed(() => {
+  const corners: Point[] = []
+  for (const room of allRooms.value) {
+    for (const point of room) {
+      if (!corners.some((corner) => samePoint(corner, point))) corners.push(point)
+    }
+  }
+  return corners
+})
 const roomLabelPoints = computed(() => allRooms.value.map((room) => {
   let x = 0
   let y = 0
@@ -780,6 +792,80 @@ function isSimpleRoom(points: Point[]) {
   return true
 }
 
+function roomInteriorsOverlap(first: Point[], second: Point[]) {
+  const onBoundary = (point: Point, room: Point[]) => room.some((start, index) =>
+    pointOnSegment(point, start, room[(index + 1) % room.length]!))
+  if (first.some((point) => isPointInsidePolygon(point, second) && !onBoundary(point, second))) return true
+  if (second.some((point) => isPointInsidePolygon(point, first) && !onBoundary(point, first))) return true
+  for (let firstIndex = 0; firstIndex < first.length; firstIndex++) {
+    const firstStart = first[firstIndex]!
+    const firstEnd = first[(firstIndex + 1) % first.length]!
+    const firstMidpoint = { x: (firstStart.x + firstEnd.x) / 2, y: (firstStart.y + firstEnd.y) / 2 }
+    if (isPointInsidePolygon(firstMidpoint, second) && !onBoundary(firstMidpoint, second)) return true
+    for (let secondIndex = 0; secondIndex < second.length; secondIndex++) {
+      if (segmentsProperlyIntersect(
+        firstStart,
+        firstEnd,
+        second[secondIndex]!,
+        second[(secondIndex + 1) % second.length]!,
+      )) return true
+    }
+  }
+  for (let index = 0; index < second.length; index++) {
+    const start = second[index]!
+    const end = second[(index + 1) % second.length]!
+    const midpoint = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }
+    if (isPointInsidePolygon(midpoint, first) && !onBoundary(midpoint, first)) return true
+  }
+  return false
+}
+
+function isValidRoomLayout(rooms: Point[][]) {
+  if (rooms.some((room) => room.length < 3 || roomAreaFor(room) < 100 || !isSimpleRoom(room))) return false
+  for (let first = 0; first < rooms.length; first++) {
+    for (let second = first + 1; second < rooms.length; second++) {
+      if (roomInteriorsOverlap(rooms[first]!, rooms[second]!)) return false
+    }
+  }
+  return true
+}
+
+function removeRoomCorner(corner: Point) {
+  if (activeTool.value !== 'select') return
+  const rooms = roomPolygonsWithSharedVertices(allRooms.value)
+    .map((room) => room.filter((point) => !samePoint(point, corner)))
+  if (rooms.some((room) => room.length < 3)) {
+    roomCornerError.value = 'A room must have at least three corners.'
+    return
+  }
+  if (!isValidRoomLayout(rooms)) {
+    roomCornerError.value = 'This corner cannot be removed because it would make the room layout invalid.'
+    return
+  }
+  roomCornerError.value = ''
+  roomPoints.value = rooms[0]!
+  additionalRoomPoints.value = rooms.slice(1)
+}
+
+function roomPolygonsWithSharedVertices(rooms: Point[][]) {
+  const vertices: Point[] = []
+  for (const point of rooms.flat()) {
+    if (!vertices.some((vertex) => samePoint(vertex, point))) vertices.push(point)
+  }
+  return rooms.map((room) => {
+    const updated: Point[] = []
+    for (let index = 0; index < room.length; index++) {
+      const start = room[index]!
+      const end = room[(index + 1) % room.length]!
+      const cuts = vertices
+        .filter((point) => !samePoint(point, start) && !samePoint(point, end) && pointOnSegment(point, start, end))
+        .sort((first, second) => edgeParameter(first, start, end) - edgeParameter(second, start, end))
+      updated.push({ ...start }, ...cuts.map((point) => ({ ...point })))
+    }
+    return updated
+  })
+}
+
 function dimensions(kind: FurnitureKind) {
   const sizes: Record<FurnitureKind, [number, number, number]> = {
     chair: [48, 48, 88],
@@ -924,6 +1010,13 @@ function onCanvasClick(event: MouseEvent) {
   }
   if ((event.target as Element).closest('.plan-item')) return
   const rawPoint = svgPoint(event)
+  if (activeTool.value === 'select') {
+    const boundary = nearestRoomBoundaryPoint(rawPoint)
+    if (boundary && boundary.distance <= 14 && insertRoomCorner(boundary.point)) {
+      selectedId.value = null
+      return
+    }
+  }
   if (!allRooms.value.length && activeTool.value === 'select') {
     activeTool.value = 'room'
     selectedId.value = null
@@ -977,6 +1070,49 @@ function onCanvasClick(event: MouseEvent) {
     return
   }
   selectedId.value = null
+}
+
+function insertRoomCorner(point: Point) {
+  let inserted = false
+  const rooms = allRooms.value.map((room) => {
+    const updated: Point[] = []
+    for (let index = 0; index < room.length; index++) {
+      const start = room[index]!
+      const end = room[(index + 1) % room.length]!
+      updated.push(start)
+      if (Math.hypot(point.x - start.x, point.y - start.y) <= 1
+        || Math.hypot(point.x - end.x, point.y - end.y) <= 1
+        || !pointOnSegment(point, start, end)) continue
+      updated.push({ ...point })
+      inserted = true
+    }
+    return updated
+  })
+  if (!inserted) return false
+  roomPoints.value = rooms[0]!
+  additionalRoomPoints.value = rooms.slice(1)
+  return true
+}
+
+function roomCornerPointerDown(event: PointerEvent, corner: Point) {
+  event.stopPropagation()
+  if (event.button === 2) {
+    event.preventDefault()
+    removeRoomCorner(corner)
+    return
+  }
+  if (activeTool.value !== 'select' || !event.isPrimary || event.button !== 0) return
+  event.preventDefault()
+  const svg = (event.currentTarget as SVGGElement).ownerSVGElement
+  if (!svg) return
+  roomCornerDrag.value = {
+    corner: { ...corner },
+    pointerStart: svgPoint(event, svg),
+    rooms: roomPolygonsWithSharedVertices(allRooms.value),
+  }
+  svg.setPointerCapture(event.pointerId)
+  ignoreNextCanvasClick.value = true
+  activePointerId.value = event.pointerId
 }
 
 function onCanvasPointerDown(event: PointerEvent) {
@@ -1039,6 +1175,37 @@ function onCanvasPointerMove(event: PointerEvent) {
     }
     return
   }
+  if (roomCornerDrag.value && activePointerId.value === event.pointerId) {
+    const drag = roomCornerDrag.value
+    const pointer = svgPoint(event)
+    const corner = {
+      x: Math.max(20, Math.min(VIEW_WIDTH - 20, drag.corner.x + pointer.x - drag.pointerStart.x)),
+      y: Math.max(20, Math.min(VIEW_HEIGHT - 20, drag.corner.y + pointer.y - drag.pointerStart.y)),
+    }
+    const rooms = drag.rooms.map((room) => {
+      const updated: Point[] = []
+      for (let index = 0; index < room.length; index++) {
+        const start = room[index]!
+        const end = room[(index + 1) % room.length]!
+        if (samePoint(start, drag.corner)) {
+          updated.push({ ...corner })
+          continue
+        }
+        updated.push({ ...start })
+        if (pointOnSegment(drag.corner, start, end)
+          && Math.hypot(drag.corner.x - start.x, drag.corner.y - start.y) > 0.1
+          && Math.hypot(drag.corner.x - end.x, drag.corner.y - end.y) > 0.1) {
+          updated.push({ ...corner })
+        }
+      }
+      return updated
+    })
+    if (isValidRoomLayout(rooms)) {
+      roomPoints.value = rooms[0]!
+      additionalRoomPoints.value = rooms.slice(1)
+    }
+    return
+  }
   if (activeTool.value === 'room' || activeTool.value === 'addRoom') {
     drawingCursor.value = getRoomDrawingPoint(svgPoint(event), event.shiftKey)
   }
@@ -1087,6 +1254,7 @@ function stopDragging() {
   isDragging.value = false
   isRotating.value = false
   isPanning.value = false
+  roomCornerDrag.value = null
   activePointerId.value = null
   window.setTimeout(() => {
     ignoreNextCanvasClick.value = false
@@ -1196,23 +1364,7 @@ function finishRoomAddition(endPoint: Point) {
   const candidates = routes
     .map((route) => [...traceWithEnd, ...route.slice(1, -1)])
     .filter((points) => points.length >= 3 && roomAreaFor(points) >= 100 && isSimpleRoom(points))
-    .filter((points) => {
-      const onRoomBoundary = (point: Point, room: Point[]) => room.some((edgeStart, index) =>
-        pointOnSegment(point, edgeStart, room[(index + 1) % room.length]!))
-      const onCandidateBoundary = (point: Point) => points.some((edgeStart, index) =>
-        pointOnSegment(point, edgeStart, points[(index + 1) % points.length]!))
-      const newInteriorOverlaps = existingRooms.some((room) => {
-        if (points.some((point) => isPointInsidePolygon(point, room) && !onRoomBoundary(point, room))) return true
-        return points.some((edgeStart, index) => {
-          const edgeEnd = points[(index + 1) % points.length]!
-          const midpoint = { x: (edgeStart.x + edgeEnd.x) / 2, y: (edgeStart.y + edgeEnd.y) / 2 }
-          return isPointInsidePolygon(midpoint, room) && !onRoomBoundary(midpoint, room)
-        })
-      })
-      const existingInteriorOverlaps = existingRooms.some((room) =>
-        room.some((point) => isPointInsidePolygon(point, points) && !onCandidateBoundary(point)))
-      return !newInteriorOverlaps && !existingInteriorOverlaps
-    })
+    .filter((points) => existingRooms.every((room) => !roomInteriorsOverlap(points, room)))
   if (!candidates.length) {
     roomDrawingError.value = 'The new room would overlap an existing room or wall.'
     return
@@ -1807,6 +1959,23 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
               </g>
               <title>{{ item.name || t(itemLabel(item.kind)) }} · {{ item.width }} × {{ item.depth }} cm</title>
             </g>
+            <g v-if="activeTool === 'select' && roomCorners.length" class="room-corner-handles">
+              <g
+                v-for="(corner, index) in roomCorners"
+                :key="`room-corner-${index}`"
+                class="room-corner-handle"
+                :transform="`translate(${corner.x} ${corner.y})`"
+                :class="{ 'is-dragging': roomCornerDrag && samePoint(roomCornerDrag.corner, corner) }"
+                :aria-label="t('Drag room corner to reshape · right-click to remove')"
+                @pointerdown="roomCornerPointerDown($event, corner)"
+                @click.stop
+                @contextmenu.stop.prevent="removeRoomCorner(corner)"
+              >
+                <title>{{ t('Drag room corner to reshape · right-click to remove') }}</title>
+                <circle r="12" class="room-corner-hit-area"/>
+                <circle r="6" class="room-corner-point"/>
+              </g>
+            </g>
             <g v-for="measurement in (showDimensions ? dragMeasurements : [])" :key="measurement.id" class="drag-measurement" pointer-events="none">
               <line :x1="measurement.start.x" :y1="measurement.start.y" :x2="measurement.end.x" :y2="measurement.end.y" stroke="#4f8063" stroke-width="1.5" stroke-dasharray="5 4"/>
               <circle :cx="measurement.start.x" :cy="measurement.start.y" r="2.5" fill="#4f8063"/>
@@ -1843,7 +2012,7 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
             <div class="canvas-scale"><span class="scale-line" :style="{ width: `${scaleBar.width}px` }"></span><span>{{ scaleBar.label }}</span></div>
           </template>
         </div>
-        <div class="canvas-footer"><span v-if="view === '2d'">{{ t('Right-drag to pan · scroll to zoom · arrow keys to move selected object') }}</span><span v-else>{{ t('Drag to orbit · right-drag to pan · scroll to zoom · arrow keys to move selected object') }}</span><span class="footer-separator">·</span><span>{{ placedCount }} {{ t('objects') }}</span><span class="footer-separator">·</span><span>{{ totalArea }} m² {{ t('floor area') }}</span><span class="footer-spacer"></span><button @click="clearPlan">{{ t('Reset plan') }}</button></div>
+        <div class="canvas-footer"><span v-if="roomCornerError" role="status">{{ t(roomCornerError) }}</span><span v-else-if="view === '2d'">{{ t('Drag corners · click walls to add · right-click corners to remove · right-drag to pan · scroll to zoom') }}</span><span v-else>{{ t('Drag to orbit · right-drag to pan · scroll to zoom · arrow keys to move selected object') }}</span><span class="footer-separator">·</span><span>{{ placedCount }} {{ t('objects') }}</span><span class="footer-separator">·</span><span>{{ totalArea }} m² {{ t('floor area') }}</span><span class="footer-spacer"></span><button @click="clearPlan">{{ t('Reset plan') }}</button></div>
       </div>
       <aside v-if="selectedItem" class="inspector">
         <div class="inspector-heading"><div><span class="section-eyebrow">{{ t('SELECTED OBJECT') }}</span><input v-model="selectedItem.name" class="inspector-title-input" :aria-label="`${t('Name for')} ${t(itemLabel(selectedItem.kind))}`" :placeholder="t(itemLabel(selectedItem.kind))"></div><button class="icon-button" :aria-label="t('Close inspector')" @click="selectedId = null">×</button></div>

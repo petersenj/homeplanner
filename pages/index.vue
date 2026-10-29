@@ -27,8 +27,9 @@ type RoomEdge = { id: string; start: Point; end: Point; label: Point; labelAngle
 type DragMeasurement = { id: string; start: Point; end: Point; label: Point; text: string }
 
 const SCALE = 100
-const VIEW_WIDTH = 960
-const VIEW_HEIGHT = 680
+const VIEW_WIDTH = 1280
+const VIEW_HEIGHT = 1280
+const GRID_SIZE = 50
 const FURNITURE_WALL_SNAP_DISTANCE = 25
 const WALL_THICKNESS = 12
 const FURNITURE_WALL_CLEARANCE = 1
@@ -1860,11 +1861,11 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
         <div ref="canvasCard" class="canvas-card" :class="{ 'immersive-card': view === '3d' }" @wheel="onCanvasWheel">
           <svg v-if="view === '2d'" class="plan-svg" :class="{ 'is-panning': isPanning }" :viewBox="planViewBox" @click="onCanvasClick" @pointerdown="onCanvasPointerDown" @pointermove="onCanvasPointerMove" @pointerup="stopDragging" @pointercancel="stopDragging" @lostpointercapture="stopDragging" @contextmenu="onCanvasContextMenu">
             <defs>
-              <pattern id="grid" width="25" height="25" patternUnits="userSpaceOnUse"><path d="M 25 0 L 0 0 0 25" fill="none" stroke="#e9e7e1" stroke-width="0.8"/></pattern>
+              <pattern id="grid" :width="GRID_SIZE" :height="GRID_SIZE" patternUnits="userSpaceOnUse"><path :d="`M ${GRID_SIZE} 0 L 0 0 0 ${GRID_SIZE}`" fill="none" stroke="#a9a7a1" stroke-width="0.8"/></pattern>
               <filter id="soft-shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#443a2e" flood-opacity=".09"/></filter>
             </defs>
-            <rect width="960" height="680" fill="#f7f6f2"/>
-            <rect v-if="showGrid" width="960" height="680" fill="url(#grid)"/>
+            <rect :width="VIEW_WIDTH" :height="VIEW_HEIGHT" fill="#f7f6f2"/>
+            <rect v-if="showGrid" :width="VIEW_WIDTH" :height="VIEW_HEIGHT" fill="url(#grid)"/>
             <polygon v-for="(room, index) in allRooms" :key="`room-floor-${index}`" :points="room.map((point) => `${point.x},${point.y}`).join(' ')" fill="#f5eee4" stroke="#c6b9a8" stroke-width="1.5"/>
             <line v-for="edge in roomEdges" :key="`room-edge-${edge.id}`" :x1="edge.start.x" :y1="edge.start.y" :x2="edge.end.x" :y2="edge.end.y" stroke="#45443f" stroke-width="10" stroke-linecap="square"/>
             <g v-if="showDimensions">

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { defineAsyncComponent } from 'vue'
-import { getCatalogItem } from '~/catalog'
+import { catalogItemsByKind, getCatalogItem } from '~/catalog'
 import type { CatalogItem, FurnitureSide } from '~/catalog/types'
 import type { CameraSnapshot, DragMeasurement, Measurement, Point, RoomEdge, Wall } from '~/types/planner'
 
@@ -967,7 +967,7 @@ function dimensions(kind: FurnitureKind) {
   return getCatalogItem(kind).dimensions
 }
 
-function addItem(kind: FurnitureKind, at?: Point) {
+function addItem(kind: FurnitureKind, at?: Point, validateFloorPlacement = false) {
   if (!roomPoints.value.length) {
     roomDrawingError.value = 'Finish drawing the floorplan before adding items.'
     activeTool.value = 'room'
@@ -975,7 +975,6 @@ function addItem(kind: FurnitureKind, at?: Point) {
     return
   }
   const [width, depth, height] = dimensions(kind)
-  const id = nextId.value++
   const longestEdge = roomEdges.value.reduce((longest, edge) => edge.length > longest.length ? edge : longest, roomEdges.value[0]!)
   const definition = getCatalogItem(kind)
   const mountingEdge = definition.mountingEdge === 'second' ? roomEdges.value[1] ?? longestEdge : longestEdge
@@ -990,7 +989,7 @@ function addItem(kind: FurnitureKind, at?: Point) {
     ? wallPosition!
     : roomCenter.value
   const item: PlanItem = {
-    id,
+    id: nextId.value,
     kind,
     section: definition.section,
     wallDetailCategory: definition.wallDetailCategory,
@@ -1003,14 +1002,19 @@ function addItem(kind: FurnitureKind, at?: Point) {
     rotation: definition.wallMounted ? wallMountedRotation(targetEdge, 0) : 0,
     ...(definition.surfaceColors ? { color: definition.color } : {}),
   }
+  if (validateFloorPlacement && !definition.wallMounted && !isFurniturePlacementValid({ x: item.x, y: item.y }, item)) {
+    canvasActionError.value = 'This item cannot be placed here.'
+    return
+  }
   if (definition.wallMounted && !wallMountedOpeningLayoutIsValid(allRooms.value, [], [...items.value, item])) {
     canvasActionError.value = 'This opening cannot fit on a wall without overlapping another opening.'
     return
   }
+  nextId.value++
   items.value.push(item)
   canvasActionError.value = ''
   selectedWallId.value = null
-  selectedId.value = id
+  selectedId.value = item.id
   activeTool.value = 'select'
   pendingPoint.value = null
 }
@@ -1709,6 +1713,25 @@ function addCatalogItem(kind: FurnitureKind) {
   addItem(kind)
 }
 
+function startCatalogDrag(event: DragEvent, kind: FurnitureKind) {
+  event.dataTransfer?.setData('application/x-floorwise-catalog-item', kind)
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy'
+}
+
+function addCatalogItemAt(kind: FurnitureKind, point: Point) {
+  if (!catalogItemsByKind.has(kind)) return
+  const definition = getCatalogItem(kind)
+  if (definition.wallMounted) {
+    const edge = nearestRoomEdge(point)
+    const projected = projectPointToSegment(point, edge.start, edge.end)
+    if (Math.hypot(projected.x - point.x, projected.y - point.y) > FURNITURE_WALL_SNAP_DISTANCE) {
+      canvasActionError.value = 'Drop wall items onto a wall.'
+      return
+    }
+  }
+  addItem(kind, point, true)
+}
+
 function removeSelected() {
   if (selectedId.value === null) return
   removeItem(selectedId.value)
@@ -2114,7 +2137,7 @@ watch([items, wallSegments, roomWallDimensions, measurements, roomPoints, additi
         </div>
 
         <div class="sidebar-section furniture-section">
-          <FurnitureCatalog :t="t" :language="language" :can-place="Boolean(roomPoints.length)" @place="addCatalogItem" />
+          <FurnitureCatalog :t="t" :language="language" :can-place="Boolean(roomPoints.length)" @place="addCatalogItem" @drag-start="startCatalogDrag" />
         </div>
 
       </div>
@@ -2213,6 +2236,7 @@ watch([items, wallSegments, roomWallDimensions, measurements, roomPoints, additi
             @canvas-pointer-stop="stopDragging"
             @update-pan-offset="panOffset = $event"
             @canvas-context-menu="onCanvasContextMenu"
+            @catalog-drop="addCatalogItemAt"
             @measurement-delete="removeMeasurement"
             @item-pointer-down="itemPointerDown"
             @item-select="selectItem"

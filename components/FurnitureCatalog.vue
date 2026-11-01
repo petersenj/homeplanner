@@ -10,6 +10,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   place: [kind: string]
+  dragStart: [event: DragEvent, kind: string]
 }>()
 
 const furnitureCategory = ref('All items')
@@ -33,7 +34,7 @@ const wallDetails = computed(() => catalogItems.filter((item) =>
     <button v-for="category in ['All items', 'Furniture', 'Misc']" :key="category" :class="{ active: furnitureCategory === category }" :aria-pressed="furnitureCategory === category" @click="furnitureCategory = category">{{ t(category) }}</button>
   </div>
   <div class="catalog-grid">
-    <button v-for="entry in entries" :key="entry.kind" class="catalog-card" :disabled="!canPlace" @click="emit('place', entry.kind)">
+    <button v-for="entry in entries" :key="entry.kind" class="catalog-card" :disabled="!canPlace" :draggable="canPlace" @dragstart="emit('dragStart', $event, entry.kind)" @click="emit('place', entry.kind)">
       <span class="catalog-icon" :class="`icon-${entry.kind}`">
         <CatalogGraphic :shapes="entry.catalogIcon" view-box="0 0 42 42" aria-hidden />
       </span>
@@ -46,7 +47,7 @@ const wallDetails = computed(() => catalogItems.filter((item) =>
     <button v-for="category in ['All items', 'Windows', 'Doors']" :key="category" :class="{ active: wallDetailCategory === category }" :aria-pressed="wallDetailCategory === category" @click="wallDetailCategory = category">{{ t(category) }}</button>
   </div>
   <div class="catalog-grid">
-    <button v-for="entry in wallDetails" :key="entry.kind" class="catalog-card" :disabled="!canPlace" @click="emit('place', entry.kind)">
+    <button v-for="entry in wallDetails" :key="entry.kind" class="catalog-card" :disabled="!canPlace" :draggable="canPlace" @dragstart="emit('dragStart', $event, entry.kind)" @click="emit('place', entry.kind)">
       <span class="catalog-icon" :class="`icon-${entry.kind}`">
         <CatalogGraphic :shapes="entry.catalogIcon" view-box="0 0 42 42" aria-hidden />
       </span>

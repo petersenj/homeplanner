@@ -56,6 +56,7 @@ const emit = defineEmits<{
   canvasClick: [event: MouseEvent]
   canvasPointerMove: [event: PointerEvent]
   canvasPointerStop: []
+  catalogDrop: [kind: string, point: Point]
   updatePanOffset: [offset: Point]
   canvasContextMenu: [event: MouseEvent]
   measurementDelete: [id: number]
@@ -66,6 +67,16 @@ const emit = defineEmits<{
   roomCornerPointerDown: [event: PointerEvent, corner: Point]
   removeRoomCorner: [corner: Point]
 }>()
+
+function dropCatalogItem(event: DragEvent) {
+  event.preventDefault()
+  const kind = event.dataTransfer?.getData('application/x-floorwise-catalog-item')
+  if (!kind) return
+  const matrix = (event.currentTarget as SVGSVGElement).getScreenCTM()
+  if (!matrix) return
+  const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse())
+  emit('catalogDrop', kind, { x: point.x, y: point.y })
+}
 
 const isPanning = ref(false)
 const activePanPointer = ref<number | null>(null)
@@ -201,6 +212,8 @@ onBeforeUnmount(() => {
     @pointerup="stopPan(); emit('canvasPointerStop')"
     @pointercancel="stopPan(); emit('canvasPointerStop')"
     @lostpointercapture="stopPan(); emit('canvasPointerStop')"
+    @dragover.prevent
+    @drop="dropCatalogItem"
     @contextmenu="emit('canvasContextMenu', $event)"
   >
     <defs>

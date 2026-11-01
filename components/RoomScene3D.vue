@@ -44,6 +44,8 @@ let resizeObserver: ResizeObserver | undefined
 let animationFrame = 0
 let raycaster: THREE.Raycaster | undefined
 let pointer: THREE.Vector2 | undefined
+let pointerDown: { id: number; x: number; y: number } | null = null
+let pointerDragged = false
 let pickableObjects: THREE.Object3D[] = []
 const itemGroups = new Map<number, THREE.Group>()
 const rotationAnimations = new Map<number, { startedAt: number; startRotation: number; endRotation: number; targetRotation: number }>()
@@ -442,6 +444,10 @@ function render(timestamp: number) {
 }
 
 function onCanvasClick(event: MouseEvent) {
+  if (pointerDragged) {
+    pointerDragged = false
+    return
+  }
   if (!canvas.value || !camera || !scene || !raycaster || !pointer) return
   const bounds = canvas.value.getBoundingClientRect()
   pointer.set(
@@ -471,6 +477,30 @@ function onCanvasClick(event: MouseEvent) {
   const item = hit && taggedAncestor(hit.object, 'itemId')
   emit('wallSelect', null)
   emit('select', item && typeof item.userData.itemId === 'number' ? item.userData.itemId : null)
+}
+
+function onCanvasPointerDown(event: PointerEvent) {
+  if (event.button !== 0) return
+  pointerDown = { id: event.pointerId, x: event.clientX, y: event.clientY }
+  pointerDragged = false
+}
+
+function onCanvasPointerMove(event: PointerEvent) {
+  if (!pointerDown || pointerDown.id !== event.pointerId) return
+  if (Math.hypot(event.clientX - pointerDown.x, event.clientY - pointerDown.y) > 4) {
+    pointerDragged = true
+  }
+}
+
+function onCanvasPointerUp(event: PointerEvent) {
+  if (pointerDown?.id === event.pointerId) pointerDown = null
+}
+
+function onCanvasPointerCancel(event: PointerEvent) {
+  if (pointerDown?.id === event.pointerId) {
+    pointerDown = null
+    pointerDragged = false
+  }
 }
 
 function cameraView(topDown: boolean) {
@@ -684,6 +714,10 @@ onMounted(() => {
     positionCamera()
     controls.addEventListener('start', onControlsStart)
     controls.addEventListener('change', onControlsChange)
+    canvas.value.addEventListener('pointerdown', onCanvasPointerDown)
+    canvas.value.addEventListener('pointermove', onCanvasPointerMove)
+    canvas.value.addEventListener('pointerup', onCanvasPointerUp)
+    canvas.value.addEventListener('pointercancel', onCanvasPointerCancel)
     canvas.value.addEventListener('click', onCanvasClick)
     isReady.value = true
     animationFrame = window.requestAnimationFrame(render)
@@ -715,7 +749,13 @@ onBeforeUnmount(() => {
   window.cancelAnimationFrame(animationFrame)
   resizeObserver?.disconnect()
   controls?.dispose()
-  if (canvas.value) canvas.value.removeEventListener('click', onCanvasClick)
+  if (canvas.value) {
+    canvas.value.removeEventListener('pointerdown', onCanvasPointerDown)
+    canvas.value.removeEventListener('pointermove', onCanvasPointerMove)
+    canvas.value.removeEventListener('pointerup', onCanvasPointerUp)
+    canvas.value.removeEventListener('pointercancel', onCanvasPointerCancel)
+    canvas.value.removeEventListener('click', onCanvasClick)
+  }
   if (content) disposeGroup(content)
   renderer?.dispose()
   renderer?.forceContextLoss()

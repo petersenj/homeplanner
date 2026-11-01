@@ -80,6 +80,7 @@ let isMobileViewport = false
 const isDragging = ref(false)
 const isRotating = ref(false)
 const isPanning = ref(false)
+const isKeyboardMoving = ref(false)
 const activePointerId = ref<number | null>(null)
 const panStartPointer = ref<Point>({ x: 0, y: 0 })
 const panStartOffset = ref<Point>({ x: 0, y: 0 })
@@ -317,7 +318,7 @@ const roomDraftMeasurement = computed(() => {
   }
 })
 const dragMeasurements = computed<DragMeasurement[]>(() => {
-  if (!isDragging.value || isRotating.value || !selectedItem.value || !showDimensions.value) return []
+  if ((!isDragging.value && !isKeyboardMoving.value) || isRotating.value || !selectedItem.value || !showDimensions.value) return []
   const item = selectedItem.value
   if (getCatalogItem(item.kind).wallMounted) {
     const edge = nearestRoomEdge({ x: item.x, y: item.y })
@@ -1542,6 +1543,7 @@ function isEditableKeyboardTarget(target: EventTarget | null) {
 
 function stopKeyboardMovement() {
   heldArrowKeys.clear()
+  isKeyboardMoving.value = false
   if (keyboardMoveFrame) window.cancelAnimationFrame(keyboardMoveFrame)
   keyboardMoveFrame = 0
   keyboardMoveStartedAt = 0
@@ -1589,6 +1591,7 @@ function onKeyboardMoveKeyDown(event: KeyboardEvent) {
   if (view.value !== '2d' && view.value !== '3d') return
   event.preventDefault()
   heldArrowKeys.add(event.key)
+  isKeyboardMoving.value = true
   if (keyboardMoveFrame) return
   const now = performance.now()
   keyboardMoveStartedAt = now

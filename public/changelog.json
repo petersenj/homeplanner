@@ -1,5 +1,25 @@
 [
   {
+    "date": "2026-10-29",
+    "subject": "make grid use variable size prop and expand canvas"
+  },
+  {
+    "date": "2026-10-26",
+    "subject": "move confirmations into new dialog component"
+  },
+  {
+    "date": "2026-10-26",
+    "subject": "add corner removal (right click) and guard to prevent removal of corners where walls meet"
+  },
+  {
+    "date": "2026-10-26",
+    "subject": "add room resizing and adding corners"
+  },
+  {
+    "date": "2026-10-25",
+    "subject": "added changelog"
+  },
+  {
     "date": "2026-10-25",
     "subject": "add responsive sidepanel"
   },

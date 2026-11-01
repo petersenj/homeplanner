@@ -74,37 +74,34 @@ watch(() => props.open, (isOpen) => {
 </script>
 
 <template>
-  <div
-    v-if="open"
-    class="confirmation-backdrop changelog-backdrop"
-    @click.self="emit('update:open', false)"
-    @keydown.esc.window="emit('update:open', false)"
+  <AppConfirmationDialog
+    :open="open"
+    title-id="changelog-title"
+    dialog-class="changelog-dialog"
+    backdrop-class="changelog-backdrop"
+    @cancel="emit('update:open', false)"
   >
-    <section class="confirmation-dialog changelog-dialog" role="dialog" aria-modal="true" aria-labelledby="changelog-title">
+    <template #heading>
       <div class="changelog-heading">
-        <div>
-          <h2 id="changelog-title">{{ t("What's new") }}</h2>
-        </div>
+        <h2 id="changelog-title">{{ t("What's new") }}</h2>
         <button class="icon-button changelog-close" type="button" :aria-label="t('Close changelog')" @click="emit('update:open', false)">×</button>
       </div>
-      <p v-if="loading" class="changelog-message">{{ t('Loading changelog...') }}</p>
-      <p v-else-if="error" class="changelog-message changelog-error">{{ t('Could not load the changelog.') }}</p>
-      <p v-else-if="!groupedEntries.length" class="changelog-message">{{ t('No Git changes available yet.') }}</p>
-      <ol v-else class="changelog-list">
-        <li v-for="group in groupedEntries" :key="group.date" class="changelog-day">
-          <time :datetime="group.date">{{ group.formattedDate }}</time>
-          <ul>
-            <li v-for="(subject, index) in group.subjects" :key="`${group.date}-${index}`">{{ subject }}</li>
-          </ul>
-        </li>
-      </ol>
-    </section>
-  </div>
+    </template>
+    <p v-if="loading" class="changelog-message">{{ t('Loading changelog...') }}</p>
+    <p v-else-if="error" class="changelog-message changelog-error">{{ t('Could not load the changelog.') }}</p>
+    <p v-else-if="!groupedEntries.length" class="changelog-message">{{ t('No Git changes available yet.') }}</p>
+    <ol v-else class="changelog-list">
+      <li v-for="group in groupedEntries" :key="group.date" class="changelog-day">
+        <time :datetime="group.date">{{ group.formattedDate }}</time>
+        <ul>
+          <li v-for="(subject, index) in group.subjects" :key="`${group.date}-${index}`">{{ subject }}</li>
+        </ul>
+      </li>
+    </ol>
+  </AppConfirmationDialog>
 </template>
 
 <style scoped>
-.changelog-backdrop { z-index: 21; }
-.changelog-dialog { width: min(100%, 560px); max-height: min(80vh, 680px); display: flex; flex-direction: column; }
 .changelog-heading { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
 .changelog-heading h2 { margin: 8px 0 0; color: #3e433c; font: 700 18px 'Manrope', sans-serif; }
 .changelog-close { font-size: 22px; line-height: 20px; }
@@ -114,4 +111,6 @@ watch(() => props.open, (isOpen) => {
 .changelog-day ul { display: grid; gap: 6px; margin: 8px 0 0; padding-left: 18px; }
 .changelog-message { margin: 0; color: #777a71; font-size: 12px; line-height: 1.6; }
 .changelog-error { color: #a45d51; }
+:deep(.changelog-backdrop) { z-index: 21; }
+:deep(.changelog-dialog) { width: min(100%, 560px); max-height: min(80vh, 680px); display: flex; flex-direction: column; }
 </style>

@@ -4,7 +4,7 @@ import type { CatalogItemDefinition, SvgShape } from '../types'
 export const definition = {
   section: 'wall-details',
   wallDetailCategory: 'Windows',
-  label: { en: 'Window', de: 'Fenster' },
+  label: { en: 'Window (double leaf)', de: 'Fenster (Zweiflügelig)' },
   detail: '110 × 12 cm',
   dimensions: [110, 12, 130],
   color: '#77b9c1',

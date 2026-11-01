@@ -1980,7 +1980,6 @@ onMounted(() => {
             ?? (windowOpenWings === undefined ? undefined : windowOpenWings !== 'closed')
           const item = {
             ...savedItem,
-            kind: savedItem.kind === 'single-window' ? 'window' : savedItem.kind,
             open: savedItem.open ?? legacyOpen,
           } as PlanItem
           const definition = getCatalogItem(item.kind)

@@ -18,11 +18,13 @@ const wallDetailCategory = ref('All items')
 const entries = computed(() => catalogItems.filter((item) =>
   item.section === 'catalog'
   && (furnitureCategory.value === 'All items'
-    || (furnitureCategory.value === 'Furniture' ? item.category === 'furniture' : item.category === 'objects'))))
+    || (furnitureCategory.value === 'Furniture' ? item.category === 'furniture' : item.category === 'objects')))
+  .sort((first, second) => first.label[props.language].localeCompare(second.label[props.language], props.language)))
 const wallDetails = computed(() => catalogItems.filter((item) =>
   item.section === 'wall-details'
   && (wallDetailCategory.value === 'All items'
-    || item.wallDetailCategory === wallDetailCategory.value)))
+    || item.wallDetailCategory === wallDetailCategory.value))
+  .sort((first, second) => first.label[props.language].localeCompare(second.label[props.language], props.language)))
 </script>
 
 <template>

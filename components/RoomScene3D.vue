@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { getCatalogItem } from '~/catalog'
 import { addLegs, box } from '~/catalog/scene'
-const { t } = useAppLanguage()
+const { language, t } = useAppLanguage()
 
 type RoomItem = {
   id: number
@@ -586,7 +586,7 @@ onBeforeUnmount(() => {
     <div class="scene-compass"><span>N</span><span>↑</span></div>
     <div v-if="selectedItem" class="scene-selection">
       <span :style="{ background: selectedItem.color || '#8e967e' }"></span>
-      <strong>{{ selectedItem.name || t(getCatalogItem(selectedItem.kind).label) }}</strong>
+      <strong>{{ selectedItem.name || getCatalogItem(selectedItem.kind).label[language] }}</strong>
       <small>{{ selectedItem.width }} × {{ selectedItem.depth }} × {{ selectedItem.height }} cm</small>
     </div>
     <button class="scene-reset" :aria-label="t('Reset 3D camera')" :title="t('Reset camera view')" @click="resetCamera">↗ <span>{{ t('Reset view') }}</span></button>

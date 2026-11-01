@@ -4,7 +4,7 @@ import type { CatalogItemDefinition } from '../types'
 export const definition = {
   section: 'wall-details',
   wallDetailCategory: 'Windows',
-  label: 'Window',
+  label: { en: 'Window', de: 'Fenster' },
   detail: '110 × 12 cm',
   dimensions: [110, 12, 130],
   color: '#77b9c1',

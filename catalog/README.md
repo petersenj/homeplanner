@@ -5,8 +5,8 @@ The registry discovers these files automatically; no central list or scene
 switch needs updating.
 
 Each file exports a `definition` satisfying `CatalogItemDefinition`. It holds
-the catalog label/icon and dimensions, its 2D SVG shapes, and a `createScene`
-function for the 3D model. Keep 2D shape coordinates centered around `(0, 0)`;
+the English and German label, catalog icon and dimensions, its 2D SVG shapes,
+and a `createScene` function for the 3D model. Keep 2D shape coordinates centered around `(0, 0)`;
 the planner positions and rotates the group. 3D dimensions passed to
 `createScene` are in meters. Use the shared `box` and `addLegs` helpers where
 useful.

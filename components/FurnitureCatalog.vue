@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { catalogItems } from '~/catalog'
+import type { CatalogLanguage } from '~/catalog/types'
 
 const props = defineProps<{
   t: (key: string) => string
   canPlace: boolean
+  language: CatalogLanguage
 }>()
 
 const emit = defineEmits<{
@@ -33,7 +35,7 @@ const wallDetails = computed(() => catalogItems.filter((item) =>
       <span class="catalog-icon" :class="`icon-${entry.kind}`">
         <CatalogGraphic :shapes="entry.catalogIcon" view-box="0 0 42 42" aria-hidden />
       </span>
-      <strong>{{ t(entry.label) }}</strong><small>{{ entry.detail }}</small>
+      <strong>{{ entry.label[language] }}</strong><small>{{ entry.detail }}</small>
       <span class="catalog-plus">+</span>
     </button>
   </div>
@@ -46,7 +48,7 @@ const wallDetails = computed(() => catalogItems.filter((item) =>
       <span class="catalog-icon" :class="`icon-${entry.kind}`">
         <CatalogGraphic :shapes="entry.catalogIcon" view-box="0 0 42 42" aria-hidden />
       </span>
-      <strong>{{ t(entry.label) }}</strong>
+      <strong>{{ entry.label[language] }}</strong>
       <small>{{ entry.detail }}</small>
       <span class="catalog-plus">+</span>
     </button>

@@ -1473,7 +1473,7 @@ function itemColor(kind: FurnitureKind) {
 }
 
 function itemLabel(kind: FurnitureKind) {
-  return getCatalogItem(kind).label
+  return getCatalogItem(kind).label[language.value]
 }
 
 function roomDisplayName(name: string | undefined, index: number) {
@@ -1715,19 +1715,19 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
             </div>
             <div v-if="isRoomItemListExpanded(index) && roomItems[index]?.items.length" class="room-item-list">
               <div v-for="item in roomItems[index]!.items" :key="item.id" class="placed-row" :class="{ 'placed-active': selectedId === item.id }">
-                <button class="placed-select" :aria-label="`${t('Select')} ${item.name || t(itemLabel(item.kind))}`" @click="selectedId = item.id">
+                <button class="placed-select" :aria-label="`${t('Select')} ${item.name || itemLabel(item.kind)}`" @click="selectedId = item.id">
                   <span class="placed-dot" :style="{ background: item.color || itemColor(item.kind) }"></span>
                   <span class="placed-dim">{{ item.width }} × {{ item.depth }}</span>
                 </button>
                 <input
                   v-model="item.name"
                   class="placed-name-input"
-                  :aria-label="`${t(itemLabel(item.kind))} ${t('name')}`"
-                  :placeholder="t(itemLabel(item.kind))"
+                  :aria-label="`${itemLabel(item.kind)} ${t('name')}`"
+                  :placeholder="itemLabel(item.kind)"
                   @click.stop
                   @focus="selectedId = item.id"
                 >
-                <button class="placed-delete" type="button" :aria-label="`${t('Remove')} ${item.name || t(itemLabel(item.kind))}`" :title="t('Remove object')" @click.stop="removeItem(item.id)">
+                <button class="placed-delete" type="button" :aria-label="`${t('Remove')} ${item.name || itemLabel(item.kind)}`" :title="t('Remove object')" @click.stop="removeItem(item.id)">
                   <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.5h10M6 4.5V3h4v1.5m2 0-.6 8H4.6l-.6-8m3 2v4m2-4v4"/></svg>
                 </button>
               </div>
@@ -1738,7 +1738,7 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
         </div>
 
         <div class="sidebar-section furniture-section">
-          <FurnitureCatalog :t="t" :can-place="Boolean(roomPoints.length)" @place="addCatalogItem" />
+          <FurnitureCatalog :t="t" :language="language" :can-place="Boolean(roomPoints.length)" @place="addCatalogItem" />
         </div>
 
       </div>
@@ -1881,7 +1881,7 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
                 <circle r="11" fill="#fff" stroke="#668774" stroke-width="1.5"/>
                 <path d="M-4.7-4.7a6.7 6.7 0 1 1-1.8 6.9M-6.2-6.4v3.8h3.8" fill="none" stroke="#668774" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
               </g>
-              <title>{{ item.name || t(itemLabel(item.kind)) }} · {{ item.width }} × {{ item.depth }} cm</title>
+              <title>{{ item.name || itemLabel(item.kind) }} · {{ item.width }} × {{ item.depth }} cm</title>
             </g>
             <g v-if="activeTool === 'select' && roomCorners.length" class="room-corner-handles">
               <g
@@ -2049,7 +2049,7 @@ button { color: inherit; cursor: pointer; }
 .catalog-card:hover, .geometry-card:hover, .import-card:hover { border-color: #b8c6b8; box-shadow: 0 3px 12px #3342250a; transform: translateY(-1px); }
 .catalog-icon { height: 44px; display: grid; place-items: center; margin-bottom: 5px; background: #f6f5f0; border-radius: 6px; }
 .catalog-icon svg { width: 35px; height: 35px; fill: none; stroke: #9e876e; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.icon-table svg { stroke: #aa8a68; }.icon-cupboard svg { stroke: #7d8b79; }.icon-shelf svg { stroke: #a78c74; }.icon-window svg { stroke: #66969a; }.icon-door svg { stroke: #a57d60; }
+.icon-table svg { stroke: #aa8a68; }.icon-cupboard svg { stroke: #7d8b79; }.icon-shelf svg { stroke: #a78c74; }.icon-window svg { stroke: #66969a; }.icon-door svg { stroke: #a57d60; }.icon-carpet svg { stroke: #a86f5b; }
 .catalog-card strong, .catalog-card small { display: block; }
 .catalog-card strong, .geometry-card strong, .import-card strong { font-size: 10px; font-weight: 600; }
 .catalog-card small, .geometry-card small, .import-card small { color: #9b9c95; font-size: 9px; margin-top: 2px; }

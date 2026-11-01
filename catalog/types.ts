@@ -1,6 +1,7 @@
 import type * as THREE from 'three'
 
 export type FurnitureSide = 'top' | 'right' | 'bottom' | 'left'
+export type CatalogLanguage = 'en' | 'de'
 
 export type SvgShape = {
   tag: 'path' | 'rect' | 'line' | 'circle'
@@ -58,7 +59,7 @@ export type SceneHelpers = {
 export type CatalogItemDefinition = {
   section: 'catalog' | 'wall-details'
   wallDetailCategory?: 'Windows' | 'Doors'
-  label: string
+  label: Record<CatalogLanguage, string>
   detail: string
   dimensions: [width: number, depth: number, height: number]
   color: string

@@ -2,7 +2,7 @@ import type { CatalogItemDefinition } from '../types'
 
 export const definition = {
   section: 'catalog',
-  label: 'Shelf',
+  label: { en: 'Shelf', de: 'Regal' },
   detail: '100 × 40 cm',
   dimensions: [100, 40, 175],
   color: '#a88c72',

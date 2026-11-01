@@ -16,7 +16,7 @@ export const catalogItems: RegisteredCatalogItemDefinition[] = Object.entries(de
     if (!category || !kind) throw new Error(`Catalog definition has an unexpected path: "${path}".`)
     return { ...definition, category, kind }
   })
-  .sort((first, second) => first.label.localeCompare(second.label))
+  .sort((first, second) => first.label.en.localeCompare(second.label.en))
 
 export const catalogItemsByKind = new Map(catalogItems.map((item) => [item.kind, item]))
 

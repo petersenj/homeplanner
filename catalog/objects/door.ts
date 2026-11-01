@@ -3,7 +3,7 @@ import type { CatalogItemDefinition } from '../types'
 export const definition = {
   section: 'wall-details',
   wallDetailCategory: 'Doors',
-  label: 'Door',
+  label: { en: 'Door', de: 'Tür' },
   detail: '90 × 15 cm',
   dimensions: [90, 15, 205],
   color: '#c98d65',

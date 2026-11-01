@@ -3,7 +3,7 @@ import type { CatalogItemDefinition } from '../types'
 
 export const definition = {
   section: 'catalog',
-  label: 'Cupboard',
+  label: { en: 'Cupboard', de: 'Schrank' },
   detail: '100 × 60 cm',
   dimensions: [100, 60, 190],
   color: '#818d77',

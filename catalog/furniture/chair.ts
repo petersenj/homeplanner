@@ -2,7 +2,7 @@ import type { CatalogItemDefinition } from '../types'
 
 export const definition = {
   section: 'catalog',
-  label: 'Chair',
+  label: { en: 'Chair', de: 'Stuhl' },
   detail: '48 × 48 cm',
   dimensions: [48, 48, 88],
   color: '#c98d65',

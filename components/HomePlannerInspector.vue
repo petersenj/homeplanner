@@ -26,8 +26,8 @@ const emit = defineEmits<{
   <aside class="inspector">
     <div class="inspector-heading">
       <div><span class="section-eyebrow">{{ t('SELECTED OBJECT') }}</span><input v-model="item.name"
-          class="inspector-title-input" :aria-label="`${t('Name for')} ${t(itemLabel(item.kind))}`"
-          :placeholder="t(itemLabel(item.kind))"></div><button class="icon-button" :aria-label="t('Close inspector')"
+          class="inspector-title-input" :aria-label="`${t('Name for')} ${itemLabel(item.kind)}`"
+          :placeholder="itemLabel(item.kind)"></div><button class="icon-button" :aria-label="t('Close inspector')"
         @click="emit('close')">×</button>
     </div>
     <div class="property-row"><label class="property-label">{{ t('Width') }} <span>cm</span><input

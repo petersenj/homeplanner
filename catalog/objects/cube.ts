@@ -2,7 +2,7 @@ import type { CatalogItemDefinition } from '../types'
 
 export const definition = {
   section: 'catalog',
-  label: 'Cube',
+  label: { en: 'Cube', de: 'Würfel' },
   detail: '100 × 100 cm',
   dimensions: [100, 100, 100],
   color: '#8097a8',

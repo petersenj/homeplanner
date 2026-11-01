@@ -58,18 +58,9 @@
     "WALL DETAILS": "WANDDETAILS",
     "Windows": "Fenster",
     "Doors": "Türen",
-    "Window": "Fenster",
-    "Door": "Tür",
     "Import 3D model": "3D-Modell importieren",
     "Model import coming soon": "Modellimport kommt bald",
     "Jan's workspace": "Jans Arbeitsbereich"
-  },
-  "items": {
-    "Chair": "Stuhl",
-    "Table": "Tisch",
-    "Cupboard": "Schrank",
-    "Shelf": "Regal",
-    "Cube": "Würfel"
   },
   "toolbar": {
     "Undo is not available yet": "Rückgängig ist noch nicht verfügbar",

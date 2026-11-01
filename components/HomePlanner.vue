@@ -1929,7 +1929,14 @@ function moveSelectedItemWithKeys(timestamp: number) {
 }
 
 function onKeyboardMoveKeyDown(event: KeyboardEvent) {
-  if (!event.key.startsWith('Arrow') || isEditableKeyboardTarget(event.target) || (selectedId.value === null && selectedWallId.value === null)) return
+  if (isEditableKeyboardTarget(event.target)) return
+  if (event.key === 'Delete' && selectedId.value !== null) {
+    event.preventDefault()
+    stopKeyboardMovement()
+    removeSelected()
+    return
+  }
+  if (!event.key.startsWith('Arrow') || (selectedId.value === null && selectedWallId.value === null)) return
   if (view.value !== '2d' && view.value !== '3d') return
   event.preventDefault()
   heldArrowKeys.add(event.key)

@@ -147,7 +147,6 @@ function addRoom() {
     const next = points[(index + 1) % points.length]!
     return area + point.x * next.z - next.x * point.z
   }, 0) / 2
-  const cameraDirection = new THREE.Vector2(1, 1).normalize()
   const edges: Array<{
     id: string
     start: { x: number; z: number }
@@ -176,54 +175,87 @@ function addRoom() {
     edges.push({ id: segment.id, start, end, midpoint, angle, length, outwardX, outwardZ, exterior: edgeCounts.get(key) === 1 })
   }
 
-  const farEdges = edges.filter((edge) => edge.exterior && edge.outwardX * cameraDirection.x + edge.outwardZ * cameraDirection.y <= 0.05)
-  const windowEdge = farEdges.length
-    ? farEdges.reduce((longest, edge) => edge.length > longest.length ? edge : longest, farEdges[0]!)
-    : undefined
-
-  const openingWidth = windowEdge ? Math.min(1.25, windowEdge.length * 0.6) : 0
+  const wallMountedItems = props.items.filter((item) => getCatalogItem(item.kind).wallMounted)
   for (const edge of edges) {
     const dimensions = props.roomWallDimensions[edge.id]
     const wallHeight = (dimensions?.height ?? 265) / 100
     const wallThickness = (dimensions?.depth ?? 12) / 100
-    const sillHeight = Math.min(1.22, wallHeight * 0.46)
-    const windowHeight = Math.min(1.08, Math.max(0, wallHeight - sillHeight))
-    const headerHeight = Math.max(0, wallHeight - sillHeight - windowHeight)
     const wallGroup = new THREE.Group()
     wallGroup.userData.wallId = edge.id
     wallGroup.position.set(edge.midpoint.x, 0, edge.midpoint.z)
     wallGroup.rotation.y = edge.angle
     content.add(wallGroup)
 
-    if (edge === windowEdge && openingWidth > 0.08 && windowHeight > 0.08) {
-      const sideWidth = Math.max(0, (edge.length - openingWidth) / 2)
-      if (sideWidth > 0.001) {
-        box(wallGroup, [sideWidth, wallHeight, wallThickness], [-(openingWidth + sideWidth) / 2, wallHeight / 2, 0], '#ddd6cb')
-        box(wallGroup, [sideWidth, wallHeight, wallThickness], [(openingWidth + sideWidth) / 2, wallHeight / 2, 0], '#ddd6cb')
-      }
-      box(wallGroup, [openingWidth, sillHeight, wallThickness], [0, sillHeight / 2, 0], '#ddd6cb')
-      if (headerHeight > 0.001) {
-        box(wallGroup, [openingWidth, headerHeight, wallThickness], [0, sillHeight + windowHeight + headerHeight / 2, 0], '#ddd6cb')
-      }
-
-      const localZAxis = { x: Math.sin(edge.angle), z: Math.cos(edge.angle) }
-      const inwardZ = localZAxis.x * -edge.outwardX + localZAxis.z * -edge.outwardZ >= 0 ? 1 : -1
-      const openingFaceZ = inwardZ * (wallThickness / 2 + 0.012)
-      const glass = box(
-        wallGroup,
-        [openingWidth - 0.08, windowHeight - 0.08, 0.035],
-        [0, sillHeight + windowHeight / 2, openingFaceZ],
-        '#84c3c9',
-        { transparent: true, opacity: 0.72, roughness: 0.22, metalness: 0.08, castShadow: false },
+    const openings = wallMountedItems.flatMap((item) => {
+      const position = roomPosition(item.x, item.y)
+      const offsetX = position.x - edge.midpoint.x
+      const offsetZ = position.z - edge.midpoint.z
+      const edgeAxisX = (edge.end.x - edge.start.x) / edge.length
+      const edgeAxisZ = (edge.end.z - edge.start.z) / edge.length
+      const distanceFromEdge = Math.abs(offsetX * edge.outwardX + offsetZ * edge.outwardZ)
+      const alignment = Math.abs(
+        Math.cos(item.rotation * Math.PI / 180) * edgeAxisX
+        + Math.sin(item.rotation * Math.PI / 180) * edgeAxisZ,
       )
-      glass.material.side = THREE.DoubleSide
-      box(wallGroup, [openingWidth, 0.045, 0.07], [0, sillHeight, openingFaceZ], '#f5f2ec', { castShadow: false })
-      box(wallGroup, [openingWidth, 0.045, 0.07], [0, sillHeight + windowHeight, openingFaceZ], '#f5f2ec', { castShadow: false })
-      box(wallGroup, [0.045, windowHeight, 0.07], [-openingWidth / 2, sillHeight + windowHeight / 2, openingFaceZ], '#f5f2ec', { castShadow: false })
-      box(wallGroup, [0.045, windowHeight, 0.07], [openingWidth / 2, sillHeight + windowHeight / 2, openingFaceZ], '#f5f2ec', { castShadow: false })
-      box(wallGroup, [0.035, windowHeight - 0.08, 0.075], [0, sillHeight + windowHeight / 2, openingFaceZ], '#f5f2ec', { castShadow: false })
-    } else {
-      box(wallGroup, [edge.length + wallThickness * 0.25, wallHeight, wallThickness], [0, wallHeight / 2, 0], '#ddd6cb')
+      if (distanceFromEdge > 0.12 || alignment < 0.98) return []
+
+      const center = offsetX * edgeAxisX + offsetZ * edgeAxisZ
+      const width = item.width / 100
+      const start = Math.max(-edge.length / 2, center - width / 2)
+      const end = Math.min(edge.length / 2, center + width / 2)
+      const bottom = Math.max(0, Math.min(wallHeight, (item.floorOffset ?? 0) / 100))
+      const top = Math.max(bottom, Math.min(wallHeight, ((item.floorOffset ?? 0) + item.height) / 100))
+      if (end - start < 0.02 || top - bottom < 0.02) return []
+      return [{ item, start, end, bottom, top }]
+    })
+    const horizontalBreaks = [...new Set([
+      -edge.length / 2,
+      edge.length / 2,
+      ...openings.flatMap(({ start, end }) => [start, end]),
+    ])].sort((first, second) => first - second)
+    for (let index = 0; index < horizontalBreaks.length - 1; index++) {
+      const start = horizontalBreaks[index]!
+      const end = horizontalBreaks[index + 1]!
+      const width = end - start
+      if (width < 0.001) continue
+      const middle = (start + end) / 2
+      const verticalHoles = openings
+        .filter((opening) => middle > opening.start && middle < opening.end)
+        .map(({ bottom, top }) => ({ bottom, top }))
+        .sort((first, second) => first.bottom - second.bottom)
+      const mergedHoles: Array<{ bottom: number; top: number }> = []
+      for (const hole of verticalHoles) {
+        const previous = mergedHoles.at(-1)
+        if (previous && hole.bottom <= previous.top) previous.top = Math.max(previous.top, hole.top)
+        else mergedHoles.push({ ...hole })
+      }
+      let floor = 0
+      for (const hole of mergedHoles) {
+        if (hole.bottom - floor > 0.001) {
+          box(wallGroup, [width, hole.bottom - floor, wallThickness], [(start + end) / 2, (floor + hole.bottom) / 2, 0], '#ddd6cb')
+        }
+        floor = Math.max(floor, hole.top)
+      }
+      if (wallHeight - floor > 0.001) {
+        box(wallGroup, [width, wallHeight - floor, wallThickness], [(start + end) / 2, (floor + wallHeight) / 2, 0], '#ddd6cb')
+      }
+    }
+
+    for (const opening of openings) {
+      const { item, start, end, bottom, top } = opening
+      const openingCenter = (start + end) / 2
+      const openingWidth = end - start
+      const frameWidth = 0.055
+      const frameDepth = wallThickness + 0.04
+      const isWindow = item.kind === 'window'
+      const frameColor = isWindow ? '#f5f2ec' : '#986746'
+      const openingHeight = top - bottom
+      box(wallGroup, [frameWidth, openingHeight, frameDepth], [start, bottom + openingHeight / 2, 0], frameColor, { castShadow: false })
+      box(wallGroup, [frameWidth, openingHeight, frameDepth], [end, bottom + openingHeight / 2, 0], frameColor, { castShadow: false })
+      box(wallGroup, [openingWidth + frameWidth * 2, frameWidth, frameDepth], [openingCenter, top, 0], frameColor, { castShadow: false })
+      if (isWindow) {
+        box(wallGroup, [openingWidth + frameWidth * 2, frameWidth, frameDepth], [openingCenter, bottom, 0], frameColor, { castShadow: false })
+      }
     }
 
     perimeterWalls.push({
@@ -591,7 +623,7 @@ function onControlsChange() {
 }
 
 watch(() => [
-  props.items.map((item) => [item.id, item.kind, item.x, item.y, item.width, item.depth, item.height, item.floorOffset, item.name, item.color]),
+  props.items.map((item) => [item.id, item.kind, item.x, item.y, item.width, item.depth, item.height, item.floorOffset, item.name, item.color, item.doorOpen, item.windowOpenWings]),
   props.walls,
   props.roomWallDimensions,
   props.rooms,

@@ -27,7 +27,7 @@ export const definition = {
     if (item.doorOpen) {
       const leaf = new THREE.Group()
       leaf.position.x = -width / 2
-      leaf.rotation.y = Math.PI / 2
+      leaf.rotation.y = -Math.PI / 2
       group.add(leaf)
       box(leaf, [width, height, Math.max(depth, 0.055)], [width / 2, height / 2, 0], color)
       box(leaf, [0.022, 0.08, 0.025], [width * 0.35, height * 0.48, depth / 2 + 0.02], '#ead8b7')

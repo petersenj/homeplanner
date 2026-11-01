@@ -40,7 +40,7 @@ export const definition = {
       const pivot = new THREE.Group()
       pivot.position.x = side === 'left' ? -halfWidth : halfWidth
       if (openWings === side || openWings === 'both') {
-        pivot.rotation.y = side === 'left' ? Math.PI / 2 : -Math.PI / 2
+        pivot.rotation.y = side === 'left' ? -Math.PI / 2 : Math.PI / 2
       }
       group.add(pivot)
       const panelWidth = halfWidth

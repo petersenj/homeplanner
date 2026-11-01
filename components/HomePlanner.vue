@@ -4,6 +4,7 @@ import { getCatalogItem } from '~/catalog'
 import type { FurnitureSide } from '~/catalog/types'
 
 const RoomScene3D = defineAsyncComponent(() => import('~/components/RoomScene3D.vue'))
+const PlanScene2D = defineAsyncComponent(() => import('~/components/PlanScene2D.vue'))
 const { language, setLanguage, t } = useAppLanguage()
 
 type Point = { x: number; y: number }
@@ -46,7 +47,6 @@ const activeTool = ref<'select' | 'room' | 'addRoom' | 'measure' | 'window' | 'd
 const selectedId = ref<number | null>(null)
 const pendingPoint = ref<Point | null>(null)
 const measurementCursor = ref<Point | null>(null)
-const hoveredMeasurementId = ref<number | null>(null)
 const roomPoints = ref<Point[]>(defaultRoomPoints.map((point) => ({ ...point })))
 const additionalRoomPoints = ref<Point[][]>([])
 const roomNames = ref<string[]>(['Room 1'])
@@ -66,7 +66,6 @@ const zoom = ref(1)
 const panOffset = ref<Point>({ x: 0, y: 0 })
 const wallSegments = ref<Wall[]>([])
 const measurements = ref<Measurement[]>([])
-let measurementHoverTimeout: ReturnType<typeof setTimeout> | undefined
 const nextId = ref(10)
 const showGrid = ref(true)
 const showDimensions = ref(true)
@@ -79,11 +78,8 @@ let canvasResizeObserver: ResizeObserver | undefined
 let isMobileViewport = false
 const isDragging = ref(false)
 const isRotating = ref(false)
-const isPanning = ref(false)
 const isKeyboardMoving = ref(false)
 const activePointerId = ref<number | null>(null)
-const panStartPointer = ref<Point>({ x: 0, y: 0 })
-const panStartOffset = ref<Point>({ x: 0, y: 0 })
 const dragOffset = ref<Point>({ x: 0, y: 0 })
 const rotationStartPointerAngle = ref(0)
 const rotationStartItemAngle = ref(0)
@@ -101,10 +97,6 @@ const items = ref<PlanItem[]>([
   { id: 6, kind: 'cupboard', x: 220, y: 140, width: 100, depth: 60, height: 190, rotation: 0 },
   { id: 7, kind: 'shelf', x: 700, y: 240, width: 100, depth: 40, height: 175, rotation: 0 },
 ])
-const planDisplayRotations = reactive(new Map<number, number>())
-const planRotationAnimations = new Map<number, { startedAt: number; startRotation: number; endRotation: number; finalRotation: number }>()
-let planRotationFrame = 0
-let shouldAnimatePlanRotations = false
 
 const selectedItem = computed(() => items.value.find((item) => item.id === selectedId.value) ?? null)
 const placedCount = computed(() => items.value.length)
@@ -539,59 +531,6 @@ function sideVector(side: FurnitureSide): Point {
 function normalizeRotation(rotation: number) {
   return ((rotation % 360) + 360) % 360
 }
-
-function schedulePlanRotationFrame() {
-  if (!planRotationFrame) planRotationFrame = window.requestAnimationFrame(animatePlanRotations)
-}
-
-function animatePlanRotations(timestamp: number) {
-  planRotationFrame = 0
-  for (const [id, animation] of planRotationAnimations) {
-    const progress = Math.min((timestamp - animation.startedAt) / 180, 1)
-    const eased = 1 - (1 - progress) ** 3
-    planDisplayRotations.set(id, animation.startRotation + (animation.endRotation - animation.startRotation) * eased)
-    if (progress >= 1) {
-      planDisplayRotations.set(id, animation.finalRotation)
-      planRotationAnimations.delete(id)
-    }
-  }
-  if (planRotationAnimations.size) schedulePlanRotationFrame()
-}
-
-watch(() => items.value.map((item) => [item.id, item.rotation] as const), (rotations) => {
-  const activeIds = new Set(rotations.map(([id]) => id))
-  for (const id of planDisplayRotations.keys()) {
-    if (activeIds.has(id)) continue
-    planDisplayRotations.delete(id)
-    planRotationAnimations.delete(id)
-  }
-  for (const [id, rotation] of rotations) {
-    const targetRotation = normalizeRotation(rotation)
-    const startRotation = planDisplayRotations.get(id)
-    if (startRotation === undefined) {
-      planDisplayRotations.set(id, targetRotation)
-      continue
-    }
-    if (!shouldAnimatePlanRotations || (import.meta.client && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
-      planDisplayRotations.set(id, targetRotation)
-      planRotationAnimations.delete(id)
-      continue
-    }
-    const delta = ((targetRotation - normalizeRotation(startRotation) + 540) % 360) - 180
-    if (Math.abs(delta) < 0.001) {
-      planDisplayRotations.set(id, targetRotation)
-      planRotationAnimations.delete(id)
-      continue
-    }
-    planRotationAnimations.set(id, {
-      startedAt: performance.now(),
-      startRotation,
-      endRotation: startRotation + delta,
-      finalRotation: targetRotation,
-    })
-  }
-  if (planRotationAnimations.size) schedulePlanRotationFrame()
-}, { flush: 'sync', immediate: true })
 
 function defaultRearSide(kind: FurnitureKind, width: number, depth: number): FurnitureSide {
   return getCatalogItem(kind).rearSide?.(width, depth) ?? 'top'
@@ -1168,17 +1107,6 @@ function roomCornerPointerDown(event: PointerEvent, corner: Point) {
   activePointerId.value = event.pointerId
 }
 
-function onCanvasPointerDown(event: PointerEvent) {
-  if (event.button !== 2 || !event.isPrimary || view.value !== '2d') return
-  event.preventDefault()
-  const svg = event.currentTarget as SVGSVGElement
-  svg.setPointerCapture(event.pointerId)
-  activePointerId.value = event.pointerId
-  panStartPointer.value = { x: event.clientX, y: event.clientY }
-  panStartOffset.value = { ...panOffset.value }
-  isPanning.value = true
-}
-
 function onCanvasContextMenu(event: MouseEvent) {
   event.preventDefault()
   if (activeTool.value !== 'select') cancelActiveCanvasAction()
@@ -1217,17 +1145,6 @@ function rotationHandlePointerDown(event: PointerEvent, item: PlanItem) {
 }
 
 function onCanvasPointerMove(event: PointerEvent) {
-  if (isPanning.value && activePointerId.value === event.pointerId) {
-    const svg = event.currentTarget as SVGSVGElement
-    const bounds = svg.getBoundingClientRect()
-    const viewBoxWidth = VIEW_WIDTH / zoom.value
-    const viewBoxHeight = VIEW_HEIGHT / zoom.value
-    panOffset.value = {
-      x: panStartOffset.value.x - (event.clientX - panStartPointer.value.x) * viewBoxWidth / bounds.width,
-      y: panStartOffset.value.y - (event.clientY - panStartPointer.value.y) * viewBoxHeight / bounds.height,
-    }
-    return
-  }
   if (roomCornerDrag.value && activePointerId.value === event.pointerId) {
     const drag = roomCornerDrag.value
     const pointer = svgPoint(event)
@@ -1306,7 +1223,6 @@ function onCanvasPointerMove(event: PointerEvent) {
 function stopDragging() {
   isDragging.value = false
   isRotating.value = false
-  isPanning.value = false
   roomCornerDrag.value = null
   activePointerId.value = null
   window.setTimeout(() => {
@@ -1455,20 +1371,6 @@ function removeItem(id: number) {
 
 function removeMeasurement(id: number) {
   measurements.value = measurements.value.filter((measurement) => measurement.id !== id)
-  if (hoveredMeasurementId.value === id) hoveredMeasurementId.value = null
-}
-
-function showMeasurementDelete(id: number) {
-  if (measurementHoverTimeout) clearTimeout(measurementHoverTimeout)
-  hoveredMeasurementId.value = id
-}
-
-function hideMeasurementDeleteLater(id: number) {
-  if (measurementHoverTimeout) clearTimeout(measurementHoverTimeout)
-  measurementHoverTimeout = setTimeout(() => {
-    if (hoveredMeasurementId.value === id) hoveredMeasurementId.value = null
-    measurementHoverTimeout = undefined
-  }, 350)
 }
 
 function rotateSelected() {
@@ -1717,7 +1619,6 @@ onMounted(() => {
       console.error(t('Could not restore the saved room plan.'), error)
     }
   }
-  shouldAnimatePlanRotations = true
 })
 onBeforeUnmount(() => {
   window.removeEventListener('resize', syncSidebarToViewport)
@@ -1729,8 +1630,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('keyup', onKeyboardMoveKeyUp)
   window.removeEventListener('blur', onWindowBlur)
   stopKeyboardMovement()
-  window.cancelAnimationFrame(planRotationFrame)
-  planRotationAnimations.clear()
 })
 watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, roomNames], () => {
   if (import.meta.client) {
@@ -1858,133 +1757,62 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
       <div class="canvas-area">
         <div class="canvas-label"><span class="canvas-status"></span> {{ t(view === '2d' ? 'FLOOR PLAN' : 'INTERACTIVE 3D') }} <span class="label-divider">·</span> {{ view === '2d' ? (allRooms.length > 1 ? `${allRooms.length} ${t('ROOMS')}` : roomDisplayName(roomNames[0], 0).toUpperCase()) : t('DRAG TO ORBIT') }}</div>
         <div ref="canvasCard" class="canvas-card" :class="{ 'immersive-card': view === '3d' }" @wheel="onCanvasWheel">
-          <svg v-if="view === '2d'" class="plan-svg" :class="{ 'is-panning': isPanning }" :viewBox="planViewBox" @click="onCanvasClick" @pointerdown="onCanvasPointerDown" @pointermove="onCanvasPointerMove" @pointerup="stopDragging" @pointercancel="stopDragging" @lostpointercapture="stopDragging" @contextmenu="onCanvasContextMenu">
-            <defs>
-              <pattern id="grid" :width="GRID_SIZE" :height="GRID_SIZE" patternUnits="userSpaceOnUse"><path :d="`M ${GRID_SIZE} 0 L 0 0 0 ${GRID_SIZE}`" fill="none" stroke="#a9a7a1" stroke-width="0.8"/></pattern>
-              <filter id="soft-shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#443a2e" flood-opacity=".09"/></filter>
-            </defs>
-            <rect :width="VIEW_WIDTH" :height="VIEW_HEIGHT" fill="#f7f6f2"/>
-            <rect v-if="showGrid" :width="VIEW_WIDTH" :height="VIEW_HEIGHT" fill="url(#grid)"/>
-            <polygon v-for="(room, index) in allRooms" :key="`room-floor-${index}`" :points="room.map((point) => `${point.x},${point.y}`).join(' ')" fill="#f5eee4" stroke="#c6b9a8" stroke-width="1.5"/>
-            <line v-for="edge in roomEdges" :key="`room-edge-${edge.id}`" :x1="edge.start.x" :y1="edge.start.y" :x2="edge.end.x" :y2="edge.end.y" stroke="#45443f" stroke-width="10" stroke-linecap="square"/>
-            <g v-if="showDimensions">
-              <g class="room-dimensions room-edge-dimensions">
-                <text v-for="dimension in roomDimensionLabels" :key="`room-dimension-${dimension.id}`" :x="dimension.label.x" :y="dimension.label.y" text-anchor="middle" :transform="fixedSizeLabelTransform(dimension.label, dimension.labelAngle)">{{ dimension.text }}</text>
-              </g>
-              <g v-for="(labelPoint, index) in roomLabelPoints" :key="`room-name-${index}`" :transform="fixedSizeGroupTransform(labelPoint)" class="room-plan-label">
-                <text text-anchor="middle" class="room-name-label">{{ roomDisplayName(roomNames[index], index) }}</text>
-                <text y="15" text-anchor="middle" class="room-area-label">{{ (roomAreaFor(allRooms[index]!) / SCALE ** 2).toFixed(1) }} m²</text>
-              </g>
-            </g>
-            <g v-for="wall in wallSegments" :key="`wall-${wall.id}`">
-              <line :x1="wall.start.x" :y1="wall.start.y" :x2="wall.end.x" :y2="wall.end.y" stroke="#45443f" stroke-width="10" stroke-linecap="square"/>
-              <line :x1="wall.start.x" :y1="wall.start.y" :x2="wall.end.x" :y2="wall.end.y" stroke="#c6b9a8" stroke-width="1"/>
-            </g>
-            <g
-              v-if="showCustomMeasurements"
-              v-for="measurement in measurements"
-              :key="`measure-${measurement.id}`"
-              class="saved-measurement"
-              @pointerenter="showMeasurementDelete(measurement.id)"
-              @pointerleave="hideMeasurementDeleteLater(measurement.id)"
-            >
-              <line :x1="measurement.start.x" :y1="measurement.start.y" :x2="measurement.end.x" :y2="measurement.end.y" stroke="transparent" stroke-width="12" pointer-events="stroke"/>
-              <line :x1="measurement.start.x" :y1="measurement.start.y" :x2="measurement.end.x" :y2="measurement.end.y" stroke="#628c75" stroke-width="2" stroke-dasharray="5 4"/>
-              <circle :cx="measurement.start.x" :cy="measurement.start.y" r="3" fill="#628c75"/><circle :cx="measurement.end.x" :cy="measurement.end.y" r="3" fill="#628c75"/>
-              <g :transform="fixedSizeGroupTransform({ x: (measurement.start.x + measurement.end.x) / 2, y: (measurement.start.y + measurement.end.y) / 2 })" pointer-events="none">
-                <rect x="-32" y="-17" width="64" height="22" rx="6" fill="#fff" stroke="#d8e3da"/>
-                <text y="-2" text-anchor="middle" class="measure-label">{{ formatLength(measurement.start, measurement.end) }}</text>
-              </g>
-              <g
-                v-if="hoveredMeasurementId === measurement.id"
-                class="measurement-delete-control"
-                :transform="`${fixedSizeGroupTransform({ x: (measurement.start.x + measurement.end.x) / 2, y: (measurement.start.y + measurement.end.y) / 2 })} translate(40 -17)`"
-                role="button"
-                tabindex="0"
-                :aria-label="`${t('Delete')} ${formatLength(measurement.start, measurement.end)} ${t('measurement')}`"
-                @pointerenter="showMeasurementDelete(measurement.id)"
-                @pointerleave="hideMeasurementDeleteLater(measurement.id)"
-                @pointerdown.stop
-                @click.stop.prevent="removeMeasurement(measurement.id)"
-                @keydown.enter.stop.prevent="removeMeasurement(measurement.id)"
-                @keydown.space.stop.prevent="removeMeasurement(measurement.id)"
-              >
-                <title>{{ t('Delete measurement') }}</title>
-                <circle r="12" fill="transparent"/>
-                <circle r="10" fill="#fff" stroke="#d8e3da"/>
-                <path d="m-3-3 6 6m0-6-6 6" stroke="#a45e55" stroke-width="1.8" stroke-linecap="round"/>
-              </g>
-            </g>
-            <g v-if="showCustomMeasurements && liveMeasurement" class="live-measurement" pointer-events="none">
-              <line :x1="liveMeasurement.start.x" :y1="liveMeasurement.start.y" :x2="liveMeasurement.end.x" :y2="liveMeasurement.end.y" stroke="#4f8063" stroke-width="2" stroke-dasharray="5 4"/>
-              <circle :cx="liveMeasurement.start.x" :cy="liveMeasurement.start.y" r="3" fill="#4f8063"/>
-              <circle :cx="liveMeasurement.end.x" :cy="liveMeasurement.end.y" r="3" fill="#4f8063"/>
-              <g :transform="fixedSizeGroupTransform(liveMeasurement.label)">
-                <rect x="-32" y="-17" width="64" height="22" rx="6" fill="#fff" stroke="#cbd9ce"/>
-                <text y="-2" text-anchor="middle" class="measure-label">{{ liveMeasurement.text }}</text>
-              </g>
-            </g>
-            <g v-if="pendingPoint" class="pending-point"><circle :cx="pendingPoint.x" :cy="pendingPoint.y" r="6"/><circle :cx="pendingPoint.x" :cy="pendingPoint.y" r="12"/></g>
-            <g v-if="(activeTool === 'room' || activeTool === 'addRoom') && (drawingRoomPoints.length || drawingCursor)">
-              <polyline :points="[...drawingRoomPoints, ...(drawingCursor ? [drawingCursor] : [])].map((point) => `${point.x},${point.y}`).join(' ')" fill="none" stroke="#668371" stroke-width="4" stroke-dasharray="9 5" stroke-linecap="round" stroke-linejoin="round"/>
-              <circle v-for="(point, index) in drawingRoomPoints" :key="`room-point-${index}`" :cx="point.x" :cy="point.y" r="7" fill="#fff" stroke="#668371" stroke-width="3"/>
-              <circle v-if="drawingCursor && drawingCursorSnapsToWall" :cx="drawingCursor.x" :cy="drawingCursor.y" r="9" fill="#e5f1e8" stroke="#4f8063" stroke-width="3"/>
-              <g v-if="showDimensions && roomDraftMeasurement" class="room-draft-measurement" pointer-events="none">
-                <line :x1="roomDraftMeasurement.start.x" :y1="roomDraftMeasurement.start.y" :x2="roomDraftMeasurement.end.x" :y2="roomDraftMeasurement.end.y" stroke="#4f8063" stroke-width="1.5" stroke-dasharray="5 4"/>
-                <g :transform="fixedSizeGroupTransform(roomDraftMeasurement.label)">
-                  <rect x="-31" y="-12" width="62" height="22" rx="6" fill="#fff" stroke="#cbd9ce"/>
-                  <text y="3" text-anchor="middle" class="measure-label">{{ roomDraftMeasurement.text }}</text>
-                </g>
-              </g>
-              <text v-if="drawingCursorClosesRoom" :x="drawingCursor?.x" :y="(drawingCursor?.y || 0) - 14" :transform="fixedSizeLabelTransform({ x: drawingCursor?.x || 0, y: (drawingCursor?.y || 0) - 14 })" text-anchor="middle" fill="#4f8063" font-size="10" font-weight="700">{{ t(activeTool === 'addRoom' ? 'FINISH ON WALL' : 'CLOSE ROOM') }}</text>
-              <text v-else-if="activeTool === 'addRoom' && !drawingRoomPoints.length && drawingCursorSnapsToWall" :x="drawingCursor?.x" :y="(drawingCursor?.y || 0) - 14" :transform="fixedSizeLabelTransform({ x: drawingCursor?.x || 0, y: (drawingCursor?.y || 0) - 14 })" text-anchor="middle" fill="#4f8063" font-size="10" font-weight="700">{{ t('START HERE') }}</text>
-            </g>
-            <g v-for="item in items" :key="item.id" class="plan-item" :class="{ 'is-selected': selectedId === item.id, 'is-dragging': isDragging && selectedId === item.id }" :transform="`translate(${item.x} ${item.y})`" @pointerdown="itemPointerDown($event, item)" @click.stop="selectedId = item.id">
-              <g :transform="`rotate(${planDisplayRotations.get(item.id) ?? item.rotation})`">
-                <FurniturePlanGraphic :item="item" />
-                <rect v-if="selectedId === item.id" :x="-item.width / 2 - 6" :y="-item.depth / 2 - 6" :width="item.width + 12" :height="item.depth + 12" rx="12" fill="none" stroke="#668774" stroke-width="2" stroke-dasharray="4 3"/>
-                <g
-                  v-if="selectedId === item.id && !getCatalogItem(item.kind).wallMounted"
-                  class="rotation-handle"
-                  :transform="`translate(${item.width / 2 + 14} ${-item.depth / 2 - 14}) rotate(${-item.rotation})`"
-                  @pointerdown="rotationHandlePointerDown($event, item)"
-                  @click.stop
-                >
-                  <title>{{ t('Drag to rotate · 10° steps · hold Shift for 1° steps') }}</title>
-                  <circle r="11" fill="#fff" stroke="#668774" stroke-width="1.5"/>
-                  <path d="M-4.7-4.7a6.7 6.7 0 1 1-1.8 6.9M-6.2-6.4v3.8h3.8" fill="none" stroke="#668774" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                </g>
-                <title>{{ item.name || itemLabel(item.kind) }} · {{ item.width }} × {{ item.depth }} cm</title>
-              </g>
-            </g>
-            <g v-if="activeTool === 'select' && roomCorners.length" class="room-corner-handles">
-              <g
-                v-for="(corner, index) in roomCorners"
-                :key="`room-corner-${index}`"
-                class="room-corner-handle"
-                :transform="`translate(${corner.x} ${corner.y})`"
-                :class="{ 'is-dragging': roomCornerDrag && samePoint(roomCornerDrag.corner, corner) }"
-                :aria-label="t('Drag room corner to reshape · right-click to remove')"
-                @pointerdown="roomCornerPointerDown($event, corner)"
-                @click.stop
-                @contextmenu.stop.prevent="removeRoomCorner(corner)"
-              >
-                <title>{{ t('Drag room corner to reshape · right-click to remove') }}</title>
-                <circle r="12" class="room-corner-hit-area"/>
-                <circle r="6" class="room-corner-point"/>
-              </g>
-            </g>
-            <g v-for="measurement in (showDimensions ? dragMeasurements : [])" :key="measurement.id" class="drag-measurement" pointer-events="none">
-              <line :x1="measurement.start.x" :y1="measurement.start.y" :x2="measurement.end.x" :y2="measurement.end.y" stroke="#4f8063" stroke-width="1.5" stroke-dasharray="5 4"/>
-              <circle :cx="measurement.start.x" :cy="measurement.start.y" r="2.5" fill="#4f8063"/>
-              <circle :cx="measurement.end.x" :cy="measurement.end.y" r="2.5" fill="#4f8063"/>
-              <g :transform="fixedSizeGroupTransform(measurement.label)">
-                <rect x="-31" y="-12" width="62" height="22" rx="6" fill="#fff" stroke="#cbd9ce"/>
-                <text y="3" text-anchor="middle" class="measure-label">{{ measurement.text }}</text>
-              </g>
-            </g>
-            <text v-if="roomPoints.length" :x="roomBounds.x + roomBounds.width / 2" :y="roomBounds.y + roomBounds.height + 35" :transform="fixedSizeLabelTransform({ x: roomBounds.x + roomBounds.width / 2, y: roomBounds.y + roomBounds.height + 35 })" text-anchor="middle" class="room-caption">{{ allRooms.length }} {{ t(allRooms.length === 1 ? 'ROOM' : 'ROOMS') }} · {{ totalArea }} M²</text>
-          </svg>
+          <PlanScene2D
+            v-if="view === '2d'"
+            :view-box="planViewBox"
+            :view-width="VIEW_WIDTH"
+            :view-height="VIEW_HEIGHT"
+            :grid-size="GRID_SIZE"
+            :scale="SCALE"
+            :zoom="zoom"
+            :pan-offset="panOffset"
+            :show-grid="showGrid"
+            :all-rooms="allRooms"
+            :show-dimensions="showDimensions"
+            :room-edges="roomEdges"
+            :room-dimension-labels="roomDimensionLabels"
+            :room-label-points="roomLabelPoints"
+            :room-names="roomNames"
+            :room-display-name="roomDisplayName"
+            :room-area-for="roomAreaFor"
+            :wall-segments="wallSegments"
+            :show-custom-measurements="showCustomMeasurements"
+            :measurements="measurements"
+            :fixed-size-label-transform="fixedSizeLabelTransform"
+            :fixed-size-group-transform="fixedSizeGroupTransform"
+            :format-length="formatLength"
+            :t="t"
+            :live-measurement="liveMeasurement"
+            :pending-point="pendingPoint"
+            :active-tool="activeTool"
+            :drawing-room-points="drawingRoomPoints"
+            :drawing-cursor="drawingCursor"
+            :drawing-cursor-snaps-to-wall="drawingCursorSnapsToWall"
+            :room-draft-measurement="roomDraftMeasurement"
+            :drawing-cursor-closes-room="drawingCursorClosesRoom"
+            :items="items"
+            :selected-id="selectedId"
+            :is-dragging="isDragging"
+            :item-label="itemLabel"
+            :room-corners="roomCorners"
+            :room-corner-drag="roomCornerDrag"
+            :same-point="samePoint"
+            :drag-measurements="dragMeasurements"
+            :room-points="roomPoints"
+            :room-bounds="roomBounds"
+            :total-area="totalArea"
+            @canvas-click="onCanvasClick"
+            @canvas-pointer-move="onCanvasPointerMove"
+            @canvas-pointer-stop="stopDragging"
+            @update-pan-offset="panOffset = $event"
+            @canvas-context-menu="onCanvasContextMenu"
+            @measurement-delete="removeMeasurement"
+            @item-pointer-down="itemPointerDown"
+            @item-select="selectedId = $event"
+            @rotation-pointer-down="rotationHandlePointerDown"
+            @room-corner-pointer-down="roomCornerPointerDown"
+            @remove-room-corner="removeRoomCorner"
+          />
 
           <ClientOnly v-else>
             <RoomScene3D

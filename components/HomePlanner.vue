@@ -8,7 +8,17 @@ const RoomScene3D = defineAsyncComponent(() => import('~/components/RoomScene3D.
 const PlanScene2D = defineAsyncComponent(() => import('~/components/PlanScene2D.vue'))
 const { language, setLanguage, t } = useAppLanguage()
 
-type RoomCornerDrag = { corner: Point; pointerStart: Point; rooms: Point[][] }
+type DragAxis = 'x' | 'y'
+type WallMountedAnchor = {
+  itemId: number
+  start: Point
+  end: Point
+  parameter: number
+  normalOffset: number
+}
+type CornerMove = { from: Point; to: Point }
+type RoomCornerDrag = { corner: Point; pointerStart: Point; rooms: Point[][]; anchors: WallMountedAnchor[]; lockedAxis: DragAxis | null }
+type RoomWallDrag = { wall: RoomEdge; pointerStart: Point; rooms: Point[][]; anchors: WallMountedAnchor[]; lockedAxis: DragAxis | null }
 type FurnitureKind = string
 type PlanItem = CatalogItem
 
@@ -30,6 +40,7 @@ const view = ref<'2d' | '3d'>('2d')
 const cameraSnapshot = ref<CameraSnapshot | null>(null)
 const activeTool = ref<'select' | 'room' | 'addRoom' | 'measure' | 'window' | 'door' | 'cube' | 'furniture'>('select')
 const selectedId = ref<number | null>(null)
+const selectedWallId = ref<string | null>(null)
 const pendingPoint = ref<Point | null>(null)
 const measurementCursor = ref<Point | null>(null)
 const roomPoints = ref<Point[]>(defaultRoomPoints.map((point) => ({ ...point })))
@@ -42,6 +53,7 @@ const drawingCursorSnapsToWall = ref(false)
 const roomDrawingError = ref('')
 const roomCornerError = ref('')
 const roomCornerDrag = ref<RoomCornerDrag | null>(null)
+const roomWallDrag = ref<RoomWallDrag | null>(null)
 const activeConfirmation = ref<'new-floorplan' | 'reset-plan' | null>(null)
 const projectMenuOpen = ref(false)
 const moreMenuOpen = ref(false)
@@ -50,6 +62,7 @@ const appTutorial = ref<{ restart: () => void } | null>(null)
 const zoom = ref(1)
 const panOffset = ref<Point>({ x: 0, y: 0 })
 const wallSegments = ref<Wall[]>([])
+const roomWallDimensions = ref<Record<string, { depth: number; height: number }>>({})
 const measurements = ref<Measurement[]>([])
 const nextId = ref(10)
 const showGrid = ref(true)
@@ -84,6 +97,17 @@ const items = ref<PlanItem[]>([
 ])
 
 const selectedItem = computed(() => items.value.find((item) => item.id === selectedId.value) ?? null)
+const selectedRoomWall = computed(() => {
+  const edge = roomEdges.value.find((roomEdge) => roomEdge.id === selectedWallId.value)
+  if (!edge) return null
+  const dimensions = roomWallDimensions.value[edge.id]
+  return {
+    edge,
+    length: edge.length * SCALE,
+    depth: dimensions?.depth ?? WALL_THICKNESS,
+    height: dimensions?.height ?? 265,
+  }
+})
 const placedCount = computed(() => items.value.length)
 const roomBounds = computed(() => {
   const points = allRoomPoints.value.flat()
@@ -883,6 +907,7 @@ function addItem(kind: FurnitureKind, at?: Point) {
     rotation: definition.wallMounted ? normalizeRotation(edgeAngle) : 0,
   }
   items.value.push(item)
+  selectedWallId.value = null
   selectedId.value = id
   activeTool.value = 'select'
   pendingPoint.value = null
@@ -892,6 +917,7 @@ function selectTool(tool: typeof activeTool.value) {
   clearCanvasDraft()
   activeTool.value = tool
   selectedId.value = null
+  selectedWallId.value = null
 }
 
 function clearCanvasDraft() {
@@ -908,6 +934,7 @@ function cancelActiveCanvasAction() {
   clearCanvasDraft()
   activeTool.value = 'select'
   selectedId.value = null
+  selectedWallId.value = null
 }
 
 function svgPoint(event: MouseEvent | PointerEvent, svg = event.currentTarget as SVGSVGElement): Point {
@@ -986,14 +1013,8 @@ function onCanvasClick(event: MouseEvent) {
     return
   }
   if ((event.target as Element).closest('.plan-item')) return
+  if (activeTool.value === 'select') selectedWallId.value = null
   const rawPoint = svgPoint(event)
-  if (activeTool.value === 'select') {
-    const boundary = nearestRoomBoundaryPoint(rawPoint)
-    if (boundary && boundary.distance <= 14 && insertRoomCorner(boundary.point)) {
-      selectedId.value = null
-      return
-    }
-  }
   if (!allRooms.value.length && activeTool.value === 'select') {
     activeTool.value = 'room'
     selectedId.value = null
@@ -1005,6 +1026,7 @@ function onCanvasClick(event: MouseEvent) {
         roomDrawingError.value = 'Start on an existing room wall or corner.'
         return
       }
+      insertRoomCornerPreservingWallDimensions(boundary.point)
       drawingRoomPoints.value.push(boundary.point)
       drawingCursor.value = boundary.point
       drawingCursorSnapsToWall.value = true
@@ -1013,6 +1035,7 @@ function onCanvasClick(event: MouseEvent) {
     }
     const point = getRoomDrawingPoint(rawPoint, event.shiftKey)
     if (activeTool.value === 'addRoom' && drawingCursorClosesRoom.value) {
+      insertRoomCornerPreservingWallDimensions(point)
       finishRoomAddition(point)
       return
     }
@@ -1071,6 +1094,86 @@ function insertRoomCorner(point: Point) {
   return true
 }
 
+function insertRoomCornerPreservingWallDimensions(point: Point) {
+  const previousEdges = roomEdges.value.map((edge) => ({
+    start: { ...edge.start },
+    end: { ...edge.end },
+    dimensions: roomWallDimensions.value[edge.id],
+  }))
+  if (!insertRoomCorner(point)) return false
+
+  const dimensionsById: Record<string, { depth: number; height: number }> = {}
+  for (const previous of previousEdges) {
+    if (!previous.dimensions) continue
+    for (const edge of roomEdges.value) {
+      if (pointOnSegment(edge.start, previous.start, previous.end)
+        && pointOnSegment(edge.end, previous.start, previous.end)) {
+        dimensionsById[edge.id] = previous.dimensions
+      }
+    }
+  }
+  roomWallDimensions.value = dimensionsById
+  return true
+}
+
+function constrainDragDelta(
+  drag: { lockedAxis: DragAxis | null },
+  dx: number,
+  dy: number,
+  shiftKey: boolean,
+) {
+  if (shiftKey && !drag.lockedAxis && Math.hypot(dx, dy) >= 2) {
+    drag.lockedAxis = Math.abs(dx) >= Math.abs(dy) ? 'x' : 'y'
+  }
+  if (drag.lockedAxis === 'x') return { dx, dy: 0 }
+  if (drag.lockedAxis === 'y') return { dx: 0, dy }
+  return { dx, dy }
+}
+
+function captureWallMountedAnchors(): WallMountedAnchor[] {
+  return items.value.flatMap((item) => {
+    if (!getCatalogItem(item.kind).wallMounted || !roomEdges.value.length) return []
+    let nearest: { edge: RoomEdge; projected: Point; distance: number } | null = null
+    for (const edge of roomEdges.value) {
+      const projected = projectPointToSegment({ x: item.x, y: item.y }, edge.start, edge.end)
+      const distance = Math.hypot(projected.x - item.x, projected.y - item.y)
+      if (!nearest || distance < nearest.distance) nearest = { edge, projected, distance }
+    }
+    if (!nearest || nearest.distance > 20) return []
+    const dx = nearest.edge.end.x - nearest.edge.start.x
+    const dy = nearest.edge.end.y - nearest.edge.start.y
+    const length = Math.hypot(dx, dy) || 1
+    return [{
+      itemId: item.id,
+      start: { ...nearest.edge.start },
+      end: { ...nearest.edge.end },
+      parameter: edgeParameter(nearest.projected, nearest.edge.start, nearest.edge.end),
+      normalOffset: ((item.x - nearest.projected.x) * -dy + (item.y - nearest.projected.y) * dx) / length,
+    }]
+  })
+}
+
+function updateWallMountedAnchors(anchors: WallMountedAnchor[], movedCorners: CornerMove[]) {
+  for (const anchor of anchors) {
+    const startMove = movedCorners.find((move) => samePoint(move.from, anchor.start))
+    const endMove = movedCorners.find((move) => samePoint(move.from, anchor.end))
+    if (!startMove && !endMove) continue
+    const start = startMove?.to ?? anchor.start
+    const end = endMove?.to ?? anchor.end
+    const dx = end.x - start.x
+    const dy = end.y - start.y
+    const length = Math.hypot(dx, dy)
+    if (length < 0.1) continue
+    const item = items.value.find((entry) => entry.id === anchor.itemId)
+    if (!item) continue
+    const minimumParameter = Math.min(item.width / (2 * length), 0.5)
+    const parameter = Math.max(minimumParameter, Math.min(1 - minimumParameter, anchor.parameter))
+    item.x = start.x + dx * parameter - dy / length * anchor.normalOffset
+    item.y = start.y + dy * parameter + dx / length * anchor.normalOffset
+    item.rotation = normalizeRotation(Math.atan2(dy, dx) * 180 / Math.PI)
+  }
+}
+
 function roomCornerPointerDown(event: PointerEvent, corner: Point) {
   event.stopPropagation()
   if (event.button === 2) {
@@ -1080,16 +1183,94 @@ function roomCornerPointerDown(event: PointerEvent, corner: Point) {
   }
   if (activeTool.value !== 'select' || !event.isPrimary || event.button !== 0) return
   event.preventDefault()
+  selectedWallId.value = null
   const svg = (event.currentTarget as SVGGElement).ownerSVGElement
   if (!svg) return
   roomCornerDrag.value = {
     corner: { ...corner },
     pointerStart: svgPoint(event, svg),
     rooms: roomPolygonsWithSharedVertices(allRooms.value),
+    anchors: captureWallMountedAnchors(),
+    lockedAxis: null,
   }
   svg.setPointerCapture(event.pointerId)
   ignoreNextCanvasClick.value = true
   activePointerId.value = event.pointerId
+}
+
+function moveRoomWall(
+  edge: RoomEdge,
+  dx: number,
+  dy: number,
+  sourceRooms = allRooms.value,
+  anchors: WallMountedAnchor[] = [],
+) {
+  const rooms = roomPolygonsWithSharedVertices(sourceRooms).map((room) => room.map((point) => {
+    if (samePoint(point, edge.start) || samePoint(point, edge.end)) {
+      return { x: point.x + dx, y: point.y + dy }
+    }
+    return point
+  }))
+  if (!isValidRoomLayout(rooms)) return false
+  roomPoints.value = rooms[0]!
+  additionalRoomPoints.value = rooms.slice(1)
+  updateWallMountedAnchors(anchors, [
+    { from: edge.start, to: { x: edge.start.x + dx, y: edge.start.y + dy } },
+    { from: edge.end, to: { x: edge.end.x + dx, y: edge.end.y + dy } },
+  ])
+  return true
+}
+
+function roomWallPointerDown(event: PointerEvent, edge: RoomEdge) {
+  if (activeTool.value !== 'select' || !event.isPrimary || event.button !== 0) return
+  event.stopPropagation()
+  selectedId.value = null
+  selectedWallId.value = edge.id
+  const svg = (event.currentTarget as SVGGElement).ownerSVGElement
+  if (!svg) return
+  roomWallDrag.value = {
+    wall: edge,
+    pointerStart: svgPoint(event, svg),
+    rooms: roomPolygonsWithSharedVertices(allRooms.value),
+    anchors: captureWallMountedAnchors(),
+    lockedAxis: null,
+  }
+  svg.setPointerCapture(event.pointerId)
+  ignoreNextCanvasClick.value = true
+  activePointerId.value = event.pointerId
+}
+
+function updateRoomWallLength(id: string, length: number) {
+  const edge = roomEdges.value.find((roomEdge) => roomEdge.id === id)
+  if (!edge || !Number.isFinite(length) || length < 1) return
+  const currentLength = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y)
+  if (currentLength < 0.001) return
+  const delta = length - currentLength
+  const direction = {
+    x: (edge.end.x - edge.start.x) / currentLength,
+    y: (edge.end.y - edge.start.y) / currentLength,
+  }
+  const rooms = roomPolygonsWithSharedVertices(allRooms.value).map((room) => room.map((point) => {
+    if (samePoint(point, edge.start)) {
+      return { x: point.x - direction.x * delta / 2, y: point.y - direction.y * delta / 2 }
+    }
+    if (samePoint(point, edge.end)) {
+      return { x: point.x + direction.x * delta / 2, y: point.y + direction.y * delta / 2 }
+    }
+    return point
+  }))
+  if (!isValidRoomLayout(rooms)) return
+  roomPoints.value = rooms[0]!
+  additionalRoomPoints.value = rooms.slice(1)
+}
+
+function updateRoomWallDimension(id: string, dimension: 'depth' | 'height', value: number) {
+  if (!Number.isFinite(value) || value < 1) return
+  const current = roomWallDimensions.value[id] ?? { depth: WALL_THICKNESS, height: 265 }
+  roomWallDimensions.value = {
+    ...roomWallDimensions.value,
+    [id]: { ...current, [dimension]: value },
+  }
 }
 
 function onCanvasContextMenu(event: MouseEvent) {
@@ -1099,6 +1280,7 @@ function onCanvasContextMenu(event: MouseEvent) {
 
 function itemPointerDown(event: PointerEvent, item: PlanItem) {
   event.stopPropagation()
+  selectedWallId.value = null
   selectedId.value = item.id
   if (activeTool.value !== 'select') return
   if (!event.isPrimary || event.button !== 0) return
@@ -1111,6 +1293,16 @@ function itemPointerDown(event: PointerEvent, item: PlanItem) {
   ignoreNextCanvasClick.value = true
   activePointerId.value = event.pointerId
   isDragging.value = true
+}
+
+function selectItem(id: number | null) {
+  selectedWallId.value = null
+  selectedId.value = id
+}
+
+function selectRoomWall(id: string | null) {
+  selectedId.value = null
+  selectedWallId.value = id
 }
 
 function rotationHandlePointerDown(event: PointerEvent, item: PlanItem) {
@@ -1130,12 +1322,36 @@ function rotationHandlePointerDown(event: PointerEvent, item: PlanItem) {
 }
 
 function onCanvasPointerMove(event: PointerEvent) {
+  if (roomWallDrag.value && activePointerId.value === event.pointerId) {
+    const drag = roomWallDrag.value
+    const pointer = svgPoint(event)
+    const delta = constrainDragDelta(
+      drag,
+      pointer.x - drag.pointerStart.x,
+      pointer.y - drag.pointerStart.y,
+      event.shiftKey,
+    )
+    moveRoomWall(
+      drag.wall,
+      delta.dx,
+      delta.dy,
+      drag.rooms,
+      drag.anchors,
+    )
+    return
+  }
   if (roomCornerDrag.value && activePointerId.value === event.pointerId) {
     const drag = roomCornerDrag.value
     const pointer = svgPoint(event)
+    const delta = constrainDragDelta(
+      drag,
+      pointer.x - drag.pointerStart.x,
+      pointer.y - drag.pointerStart.y,
+      event.shiftKey,
+    )
     const corner = {
-      x: Math.max(20, Math.min(VIEW_WIDTH - 20, drag.corner.x + pointer.x - drag.pointerStart.x)),
-      y: Math.max(20, Math.min(VIEW_HEIGHT - 20, drag.corner.y + pointer.y - drag.pointerStart.y)),
+      x: Math.max(20, Math.min(VIEW_WIDTH - 20, drag.corner.x + delta.dx)),
+      y: Math.max(20, Math.min(VIEW_HEIGHT - 20, drag.corner.y + delta.dy)),
     }
     const rooms = drag.rooms.map((room) => {
       const updated: Point[] = []
@@ -1158,6 +1374,7 @@ function onCanvasPointerMove(event: PointerEvent) {
     if (isValidRoomLayout(rooms)) {
       roomPoints.value = rooms[0]!
       additionalRoomPoints.value = rooms.slice(1)
+      updateWallMountedAnchors(drag.anchors, [{ from: drag.corner, to: corner }])
     }
     return
   }
@@ -1209,6 +1426,7 @@ function stopDragging() {
   isDragging.value = false
   isRotating.value = false
   roomCornerDrag.value = null
+  roomWallDrag.value = null
   activePointerId.value = null
   window.setTimeout(() => {
     ignoreNextCanvasClick.value = false
@@ -1228,6 +1446,7 @@ function confirmNewFloorplan() {
   activeConfirmation.value = null
   items.value = []
   wallSegments.value = []
+  roomWallDimensions.value = {}
   measurements.value = []
   roomPoints.value = []
   additionalRoomPoints.value = []
@@ -1240,6 +1459,7 @@ function confirmNewFloorplan() {
   pendingPoint.value = null
   measurementCursor.value = null
   selectedId.value = null
+  selectedWallId.value = null
   activeTool.value = 'room'
   view.value = '2d'
 }
@@ -1263,18 +1483,21 @@ function finishRoomDrawing() {
   roomNames.value = ['Room 1']
   items.value = []
   wallSegments.value = []
+  roomWallDimensions.value = {}
   measurements.value = []
   drawingRoomPoints.value = []
   drawingCursor.value = null
   drawingCursorClosesRoom.value = false
   drawingCursorSnapsToWall.value = false
   roomDrawingError.value = ''
+  selectedWallId.value = null
   activeTool.value = 'addRoom'
 }
 
 function beginRoomAddition() {
   clearCanvasDraft()
   selectedId.value = null
+  selectedWallId.value = null
   activeTool.value = allRooms.value.length ? 'addRoom' : 'room'
   view.value = '2d'
 }
@@ -1406,6 +1629,7 @@ function exportPlan() {
     roomNames: roomNames.value,
     items: items.value,
     walls: wallSegments.value,
+    roomWallDimensions: roomWallDimensions.value,
     measurements: measurements.value,
   }
   const url = URL.createObjectURL(new Blob([JSON.stringify(plan, null, 2)], { type: 'application/json' }))
@@ -1471,8 +1695,10 @@ function confirmResetPlan() {
   activeConfirmation.value = null
   items.value = []
   wallSegments.value = []
+  roomWallDimensions.value = {}
   measurements.value = []
   selectedId.value = null
+  selectedWallId.value = null
 }
 
 function confirmActiveAction() {
@@ -1495,12 +1721,15 @@ function stopKeyboardMovement() {
 }
 
 function moveSelectedItemWithKeys(timestamp: number) {
-  if (!heldArrowKeys.size || selectedId.value === null || (view.value !== '2d' && view.value !== '3d')) {
+  if (!heldArrowKeys.size || (selectedId.value === null && selectedWallId.value === null) || (view.value !== '2d' && view.value !== '3d')) {
     stopKeyboardMovement()
     return
   }
+  const selectedWall = selectedWallId.value
+    ? roomEdges.value.find((edge) => edge.id === selectedWallId.value)
+    : undefined
   const item = items.value.find((entry) => entry.id === selectedId.value)
-  if (!item) {
+  if (!selectedWall && !item) {
     stopKeyboardMovement()
     return
   }
@@ -1514,16 +1743,20 @@ function moveSelectedItemWithKeys(timestamp: number) {
   if (length) {
     dx = dx / length * speed * elapsed
     dy = dy / length * speed * elapsed
-    const target = { x: item.x + dx, y: item.y + dy }
-    if (getCatalogItem(item.kind).wallMounted) {
-      const edge = nearestRoomEdge(target)
-      const projected = projectOnEdge(target, edge, item.width / 2)
-      item.x = projected.point.x
-      item.y = projected.point.y
-      item.rotation = normalizeRotation(Math.atan2(edge.end.y - edge.start.y, edge.end.x - edge.start.x) * 180 / Math.PI)
-    } else if (isFurniturePlacementValid(target, item)) {
-      item.x = target.x
-      item.y = target.y
+    if (selectedWall) {
+      moveRoomWall(selectedWall, dx, dy)
+    } else if (item) {
+      const target = { x: item.x + dx, y: item.y + dy }
+      if (getCatalogItem(item.kind).wallMounted) {
+        const edge = nearestRoomEdge(target)
+        const projected = projectOnEdge(target, edge, item.width / 2)
+        item.x = projected.point.x
+        item.y = projected.point.y
+        item.rotation = normalizeRotation(Math.atan2(edge.end.y - edge.start.y, edge.end.x - edge.start.x) * 180 / Math.PI)
+      } else if (isFurniturePlacementValid(target, item)) {
+        item.x = target.x
+        item.y = target.y
+      }
     }
   }
   keyboardMoveLastFrame = timestamp
@@ -1531,7 +1764,7 @@ function moveSelectedItemWithKeys(timestamp: number) {
 }
 
 function onKeyboardMoveKeyDown(event: KeyboardEvent) {
-  if (!event.key.startsWith('Arrow') || isEditableKeyboardTarget(event.target) || selectedId.value === null) return
+  if (!event.key.startsWith('Arrow') || isEditableKeyboardTarget(event.target) || (selectedId.value === null && selectedWallId.value === null)) return
   if (view.value !== '2d' && view.value !== '3d') return
   event.preventDefault()
   heldArrowKeys.add(event.key)
@@ -1575,7 +1808,7 @@ onMounted(() => {
   const savedPlan = window.localStorage.getItem('floorwise-plan-v1') ?? window.localStorage.getItem('roomwise-plan-v1')
   if (savedPlan) {
     try {
-      const plan = JSON.parse(savedPlan) as { items?: Array<PlanItem & { rearSide?: unknown }>; walls?: Wall[]; measurements?: Measurement[]; roomPoints?: Point[]; rooms?: Point[][]; roomNames?: string[] }
+      const plan = JSON.parse(savedPlan) as { items?: Array<PlanItem & { rearSide?: unknown }>; walls?: Wall[]; roomWallDimensions?: Record<string, { depth?: number; height?: number }>; measurements?: Measurement[]; roomPoints?: Point[]; rooms?: Point[][]; roomNames?: string[] }
       if (Array.isArray(plan.items) && Array.isArray(plan.walls) && Array.isArray(plan.measurements)) {
         items.value = plan.items.map(({ rearSide: _rearSide, ...item }) => {
           const definition = getCatalogItem(item.kind)
@@ -1584,6 +1817,12 @@ onMounted(() => {
           return definition.normalizeSavedItem?.(item) ?? item
         })
         wallSegments.value = plan.walls
+        roomWallDimensions.value = Object.fromEntries(
+          Object.entries(plan.roomWallDimensions ?? {})
+            .filter(([, dimensions]) => Number.isFinite(dimensions.depth) && dimensions.depth! >= 1
+              && Number.isFinite(dimensions.height) && dimensions.height! >= 1)
+            .map(([id, dimensions]) => [id, { depth: dimensions.depth!, height: dimensions.height! }]),
+        )
         measurements.value = plan.measurements
         if (Array.isArray(plan.rooms) && plan.rooms.every((room) => Array.isArray(room) && room.length >= 3)) {
           roomPoints.value = plan.rooms[0] ?? []
@@ -1616,11 +1855,12 @@ onBeforeUnmount(() => {
   window.removeEventListener('blur', onWindowBlur)
   stopKeyboardMovement()
 })
-watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, roomNames], () => {
+watch([items, wallSegments, roomWallDimensions, measurements, roomPoints, additionalRoomPoints, roomNames], () => {
   if (import.meta.client) {
     window.localStorage.setItem('floorwise-plan-v1', JSON.stringify({
       items: items.value,
       walls: wallSegments.value,
+      roomWallDimensions: roomWallDimensions.value,
       measurements: measurements.value,
       roomPoints: roomPoints.value,
       rooms: allRooms.value,
@@ -1761,6 +2001,7 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
             :room-display-name="roomDisplayName"
             :room-area-for="roomAreaFor"
             :wall-segments="wallSegments"
+            :room-wall-dimensions="roomWallDimensions"
             :show-custom-measurements="showCustomMeasurements"
             :measurements="measurements"
             :fixed-size-label-transform="fixedSizeLabelTransform"
@@ -1777,6 +2018,7 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
             :drawing-cursor-closes-room="drawingCursorClosesRoom"
             :items="items"
             :selected-id="selectedId"
+            :selected-wall-id="selectedWallId"
             :is-dragging="isDragging"
             :item-label="itemLabel"
             :room-corners="roomCorners"
@@ -1793,7 +2035,8 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
             @canvas-context-menu="onCanvasContextMenu"
             @measurement-delete="removeMeasurement"
             @item-pointer-down="itemPointerDown"
-            @item-select="selectedId = $event"
+            @item-select="selectItem"
+            @wall-pointer-down="roomWallPointerDown"
             @rotation-pointer-down="rotationHandlePointerDown"
             @room-corner-pointer-down="roomCornerPointerDown"
             @remove-room-corner="removeRoomCorner"
@@ -1803,14 +2046,17 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
             <RoomScene3D
               :items="items"
               :walls="wallSegments"
+              :room-wall-dimensions="roomWallDimensions"
               :rooms="allRooms"
               :room-width="roomBounds.width"
               :room-depth="roomBounds.height"
               :room-x="roomBounds.x"
               :room-y="roomBounds.y"
               :selected-id="selectedId"
+              :selected-wall-id="selectedWallId"
               :camera-snapshot="cameraSnapshot"
-              @select="selectedId = $event"
+              @select="selectItem"
+              @wall-select="selectRoomWall"
               @camera-change="cameraSnapshot = $event"
             />
           </ClientOnly>
@@ -1825,16 +2071,20 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
             <div class="canvas-scale"><span class="scale-line" :style="{ width: `${scaleBar.width}px` }"></span><span>{{ scaleBar.label }}</span></div>
           </template>
         </div>
-        <div class="canvas-footer"><span v-if="roomCornerError" role="status">{{ t(roomCornerError) }}</span><span v-else-if="view === '2d'">{{ t('Drag corners · click walls to add · right-click corners to remove · right-drag to pan · scroll to zoom') }}</span><span v-else>{{ t('Drag to orbit · right-drag to pan · scroll to zoom · arrow keys to move selected object') }}</span><span class="footer-separator">·</span><span>{{ placedCount }} {{ t('objects') }}</span><span class="footer-separator">·</span><span>{{ totalArea }} m² {{ t('floor area') }}</span><span class="footer-spacer"></span><button @click="clearPlan">{{ t('Reset plan') }}</button></div>
+        <div class="canvas-footer"><span v-if="roomCornerError" role="status">{{ t(roomCornerError) }}</span><span v-else-if="view === '2d'">{{ t('Drag walls or corners · click walls to select · choose Add room to add wall corners · right-click corners to remove · right-drag to pan · scroll to zoom') }}</span><span v-else>{{ t('Drag to orbit · right-drag to pan · scroll to zoom · select a wall or object and use arrow keys to move it') }}</span><span class="footer-separator">·</span><span>{{ placedCount }} {{ t('objects') }}</span><span class="footer-separator">·</span><span>{{ totalArea }} m² {{ t('floor area') }}</span><span class="footer-spacer"></span><button @click="clearPlan">{{ t('Reset plan') }}</button></div>
       </div>
       <HomePlannerInspector
-        v-if="selectedItem"
+        v-if="selectedItem || selectedRoomWall"
         :item="selectedItem"
+        :wall="selectedRoomWall"
         :t="t"
         :item-label="itemLabel"
-        @close="selectedId = null"
+        @close="selectedId = null; selectedWallId = null"
         @rotate="rotateSelected"
         @rotation-change="updateSelectedRotation"
+        @wall-length-change="selectedRoomWall && updateRoomWallLength(selectedRoomWall.edge.id, $event)"
+        @wall-depth-change="selectedRoomWall && updateRoomWallDimension(selectedRoomWall.edge.id, 'depth', $event)"
+        @wall-height-change="selectedRoomWall && updateRoomWallDimension(selectedRoomWall.edge.id, 'height', $event)"
         @remove="removeSelected"
       />
       <div v-if="activeTool === 'cube' && view === '2d'" class="placement-tip">{{ t('Click anywhere in the room to place your cube') }} <button @click="selectTool('select')">{{ t('Cancel') }}</button></div>

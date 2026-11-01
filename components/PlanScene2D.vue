@@ -23,6 +23,7 @@ const props = defineProps<{
   roomDisplayName: (name: string | undefined, index: number) => string
   roomAreaFor: (points: Point[]) => number
   wallSegments: Wall[]
+  roomWallDimensions: Record<string, { depth: number; height: number }>
   showCustomMeasurements: boolean
   measurements: Measurement[]
   fixedSizeLabelTransform: (point: Point, rotation?: number) => string
@@ -39,6 +40,7 @@ const props = defineProps<{
   drawingCursorClosesRoom: boolean
   items: PlanItem[]
   selectedId: number | null
+  selectedWallId: string | null
   isDragging: boolean
   itemLabel: (kind: string) => string
   roomCorners: Point[]
@@ -59,6 +61,7 @@ const emit = defineEmits<{
   measurementDelete: [id: number]
   itemPointerDown: [event: PointerEvent, item: PlanItem]
   itemSelect: [id: number]
+  wallPointerDown: [event: PointerEvent, wall: RoomEdge]
   rotationPointerDown: [event: PointerEvent, item: PlanItem]
   roomCornerPointerDown: [event: PointerEvent, corner: Point]
   removeRoomCorner: [corner: Point]
@@ -120,6 +123,10 @@ function movePan(event: PointerEvent) {
 function stopPan() {
   isPanning.value = false
   activePanPointer.value = null
+}
+
+function stopWallCanvasClick(event: MouseEvent) {
+  if (props.activeTool !== 'addRoom') event.stopPropagation()
 }
 
 function scheduleRotationFrame() {
@@ -203,7 +210,18 @@ onBeforeUnmount(() => {
     <rect :width="viewWidth" :height="viewHeight" fill="#f7f6f2"/>
     <rect v-if="showGrid" :width="viewWidth" :height="viewHeight" fill="url(#grid)"/>
     <polygon v-for="(room, index) in allRooms" :key="`room-floor-${index}`" :points="room.map((point) => `${point.x},${point.y}`).join(' ')" fill="#f5eee4" stroke="#c6b9a8" stroke-width="1.5"/>
-    <line v-for="edge in roomEdges" :key="`room-edge-${edge.id}`" :x1="edge.start.x" :y1="edge.start.y" :x2="edge.end.x" :y2="edge.end.y" stroke="#45443f" stroke-width="10" stroke-linecap="square"/>
+    <g
+      v-for="edge in roomEdges"
+      :key="`room-edge-${edge.id}`"
+      class="room-wall"
+      :class="{ 'is-selected': selectedWallId === edge.id }"
+      @pointerdown="emit('wallPointerDown', $event, edge)"
+      @click="stopWallCanvasClick"
+    >
+      <line :x1="edge.start.x" :y1="edge.start.y" :x2="edge.end.x" :y2="edge.end.y" stroke="transparent" stroke-width="20" stroke-linecap="square" pointer-events="stroke"/>
+      <line :x1="edge.start.x" :y1="edge.start.y" :x2="edge.end.x" :y2="edge.end.y" :stroke="selectedWallId === edge.id ? '#668774' : '#45443f'" :stroke-width="roomWallDimensions[edge.id]?.depth ?? 12" stroke-linecap="butt" pointer-events="none"/>
+      <line :x1="edge.start.x" :y1="edge.start.y" :x2="edge.end.x" :y2="edge.end.y" stroke="#c6b9a8" stroke-width="1" pointer-events="none"/>
+    </g>
     <g v-if="showDimensions">
       <g class="room-dimensions room-edge-dimensions">
         <text v-for="dimension in roomDimensionLabels" :key="`room-dimension-${dimension.id}`" :x="dimension.label.x" :y="dimension.label.y" text-anchor="middle" :transform="fixedSizeLabelTransform(dimension.label, dimension.labelAngle)">{{ dimension.text }}</text>

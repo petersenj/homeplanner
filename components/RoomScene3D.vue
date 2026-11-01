@@ -12,16 +12,19 @@ type RoomItem = CatalogItem
 const props = defineProps<{
   items: RoomItem[]
   walls: Wall[]
+  roomWallDimensions: Record<string, { depth: number; height: number }>
   rooms: Point[][]
   roomWidth: number
   roomDepth: number
   roomX: number
   roomY: number
   selectedId: number | null
+  selectedWallId: string | null
   cameraSnapshot: CameraSnapshot | null
 }>()
 const emit = defineEmits<{
   select: [id: number | null]
+  wallSelect: [id: string | null]
   cameraChange: [snapshot: CameraSnapshot]
 }>()
 const host = ref<HTMLDivElement | null>(null)
@@ -79,9 +82,8 @@ function addRoom() {
   if (!content) return
   const width = roomWidthM.value
   const depth = roomDepthM.value
-  const wallHeight = 2.65
   const wallThickness = 0.12
-  const perimeterSegments: Array<{ roomIndex: number; start: Point; end: Point; key: string }> = []
+  const perimeterSegments: Array<{ roomIndex: number; start: Point; end: Point; key: string; id: string }> = []
   const edgeCounts = new Map<string, number>()
   const roomVertices = props.rooms.flat()
   for (const [roomIndex, room] of props.rooms.entries()) {
@@ -103,7 +105,7 @@ function addRoom() {
         const startKey = `${segmentStart.x.toFixed(2)},${segmentStart.y.toFixed(2)}`
         const endKey = `${segmentEnd.x.toFixed(2)},${segmentEnd.y.toFixed(2)}`
         const key = [startKey, endKey].sort().join('|')
-        perimeterSegments.push({ roomIndex, start: segmentStart, end: segmentEnd, key })
+        perimeterSegments.push({ roomIndex, start: segmentStart, end: segmentEnd, key, id: `${roomIndex}-${index}-${segmentIndex}` })
         edgeCounts.set(key, (edgeCounts.get(key) ?? 0) + 1)
       }
     }
@@ -147,6 +149,7 @@ function addRoom() {
   }, 0) / 2
   const cameraDirection = new THREE.Vector2(1, 1).normalize()
   const edges: Array<{
+    id: string
     start: { x: number; z: number }
     end: { x: number; z: number }
     midpoint: { x: number; z: number }
@@ -170,7 +173,7 @@ function addRoom() {
     const outwardZ = (signedArea >= 0 ? -dx : dx) / length
     const midpoint = { x: (start.x + end.x) / 2, z: (start.z + end.z) / 2 }
     const angle = -Math.atan2(dz, dx)
-    edges.push({ start, end, midpoint, angle, length, outwardX, outwardZ, exterior: edgeCounts.get(key) === 1 })
+    edges.push({ id: segment.id, start, end, midpoint, angle, length, outwardX, outwardZ, exterior: edgeCounts.get(key) === 1 })
   }
 
   const farEdges = edges.filter((edge) => edge.exterior && edge.outwardX * cameraDirection.x + edge.outwardZ * cameraDirection.y <= 0.05)
@@ -178,17 +181,21 @@ function addRoom() {
     ? farEdges.reduce((longest, edge) => edge.length > longest.length ? edge : longest, farEdges[0]!)
     : undefined
 
-  const sillHeight = 1.22
-  const windowHeight = 1.08
-  const headerHeight = wallHeight - sillHeight - windowHeight
   const openingWidth = windowEdge ? Math.min(1.25, windowEdge.length * 0.6) : 0
   for (const edge of edges) {
+    const dimensions = props.roomWallDimensions[edge.id]
+    const wallHeight = (dimensions?.height ?? 265) / 100
+    const wallThickness = (dimensions?.depth ?? 12) / 100
+    const sillHeight = Math.min(1.22, wallHeight * 0.46)
+    const windowHeight = Math.min(1.08, Math.max(0, wallHeight - sillHeight))
+    const headerHeight = Math.max(0, wallHeight - sillHeight - windowHeight)
     const wallGroup = new THREE.Group()
+    wallGroup.userData.wallId = edge.id
     wallGroup.position.set(edge.midpoint.x, 0, edge.midpoint.z)
     wallGroup.rotation.y = edge.angle
     content.add(wallGroup)
 
-    if (edge === windowEdge && openingWidth > 0) {
+    if (edge === windowEdge && openingWidth > 0.08 && windowHeight > 0.08) {
       const sideWidth = Math.max(0, (edge.length - openingWidth) / 2)
       if (sideWidth > 0.001) {
         box(wallGroup, [sideWidth, wallHeight, wallThickness], [-(openingWidth + sideWidth) / 2, wallHeight / 2, 0], '#ddd6cb')
@@ -225,6 +232,14 @@ function addRoom() {
       outward: new THREE.Vector3(edge.outwardX, 0, edge.outwardZ),
       alwaysVisible: !edge.exterior,
     })
+    if (props.selectedWallId === edge.id) {
+      wallGroup.traverse((object) => {
+        if (!(object instanceof THREE.Mesh)) return
+        const materials = Array.isArray(object.material) ? object.material : [object.material]
+        for (const meshMaterial of materials) meshMaterial.color.set('#7a9a7f')
+      })
+    }
+    pickableObjects.push(wallGroup)
   }
   }
 
@@ -402,9 +417,25 @@ function onCanvasClick(event: MouseEvent) {
   )
   raycaster.setFromCamera(pointer, camera)
   const intersections = raycaster.intersectObjects(pickableObjects, true)
-  const hit = intersections.find((intersection) => intersection.object.parent?.userData.itemId !== undefined || intersection.object.userData.itemId !== undefined)
-  const itemId = hit?.object.parent?.userData.itemId ?? hit?.object.userData.itemId ?? null
-  emit('select', itemId)
+  const taggedAncestor = (object: THREE.Object3D, key: 'wallId' | 'itemId') => {
+    let current: THREE.Object3D | null = object
+    while (current) {
+      if (current.userData[key] !== undefined) return current
+      current = current.parent
+    }
+    return null
+  }
+  const hit = intersections.find((intersection) =>
+    taggedAncestor(intersection.object, 'wallId') || taggedAncestor(intersection.object, 'itemId'))
+  const wall = hit && taggedAncestor(hit.object, 'wallId')
+  if (wall && typeof wall.userData.wallId === 'string') {
+    emit('select', null)
+    emit('wallSelect', wall.userData.wallId)
+    return
+  }
+  const item = hit && taggedAncestor(hit.object, 'itemId')
+  emit('wallSelect', null)
+  emit('select', item && typeof item.userData.itemId === 'number' ? item.userData.itemId : null)
 }
 
 function cameraView(topDown: boolean) {
@@ -558,8 +589,10 @@ function onControlsChange() {
 watch(() => [
   props.items.map((item) => [item.id, item.kind, item.x, item.y, item.width, item.depth, item.height, item.floorOffset, item.name, item.color]),
   props.walls,
+  props.roomWallDimensions,
   props.rooms,
   props.selectedId,
+  props.selectedWallId,
   props.roomWidth,
   props.roomDepth,
 ], updateScene, { deep: true })

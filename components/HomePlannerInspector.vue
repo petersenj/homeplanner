@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { CatalogItem } from '~/catalog/types'
+import type { CatalogItem, WindowOpenWings } from '~/catalog/types'
 
-type PlanItem = Pick<CatalogItem, 'kind' | 'name' | 'width' | 'depth' | 'height' | 'rotation' | 'floorOffset' | 'color'>
+type PlanItem = Pick<CatalogItem, 'kind' | 'name' | 'width' | 'depth' | 'height' | 'rotation' | 'floorOffset' | 'color' | 'doorOpen' | 'windowOpenWings'>
 type WallInspector = { length: number; depth: number; height: number }
 
 const props = defineProps<{
@@ -19,15 +19,18 @@ const emit = defineEmits<{
   remove: []
   rotationChange: [rotation: number]
   surfaceColorChange: [color: string]
+  doorOpenChange: [open: boolean]
+  windowOpenWingsChange: [wings: WindowOpenWings]
   wallLengthChange: [length: number]
   wallDepthChange: [depth: number]
   wallHeightChange: [height: number]
 }>()
 
 const activeTab = ref<'properties' | 'appearance'>('properties')
+const hasAppearance = computed(() => props.surfaceColors.length > 0 || props.item?.kind === 'door' || props.item?.kind === 'window')
 
-watch(() => props.surfaceColors.length, (count) => {
-  if (!count) activeTab.value = 'properties'
+watch(hasAppearance, (available) => {
+  if (!available) activeTab.value = 'properties'
 })
 
 function onRotationChange(event: Event) {
@@ -66,7 +69,7 @@ function onWallDimensionChange(event: Event, dimension: 'length' | 'depth' | 'he
           @change="onWallDimensionChange($event, 'height')"></label>
     </template>
     <template v-else-if="item">
-      <div v-if="surfaceColors.length" class="inspector-tabs" role="tablist">
+      <div v-if="hasAppearance" class="inspector-tabs" role="tablist">
         <button
           id="properties-tab"
           class="inspector-tab"
@@ -86,7 +89,7 @@ function onWallDimensionChange(event: Event, dimension: 'length' | 'depth' | 'he
           @click="activeTab = 'appearance'"
         >{{ t('Appearance') }}</button>
       </div>
-      <div v-if="activeTab === 'properties' || !surfaceColors.length" id="properties-panel" role="tabpanel" aria-labelledby="properties-tab">
+      <div v-if="activeTab === 'properties' || !hasAppearance" id="properties-panel" role="tabpanel" aria-labelledby="properties-tab">
         <div class="property-row"><label class="property-label">{{ t('Width') }} <span>cm</span><input
               v-model.number="item.width" type="number" min="1"></label><label class="property-label">{{ t('Depth') }}
             <span>cm</span><input v-model.number="item.depth" type="number" min="1"></label></div>
@@ -117,8 +120,9 @@ function onWallDimensionChange(event: Event, dimension: 'length' | 'depth' | 'he
         <button class="delete-button" @click="emit('remove')">{{ t('Remove object') }}</button>
       </div>
       <div v-else id="appearance-panel" class="appearance-panel" role="tabpanel" aria-labelledby="appearance-tab">
-        <span class="property-label">{{ t('Color') }}</span>
-        <div class="surface-swatches" role="group" :aria-label="t('Color')">
+        <template v-if="surfaceColors.length">
+          <span class="property-label">{{ t('Color') }}</span>
+          <div class="surface-swatches" role="group" :aria-label="t('Color')">
           <button
             v-for="color in surfaceColors"
             :key="color"
@@ -131,7 +135,20 @@ function onWallDimensionChange(event: Event, dimension: 'length' | 'depth' | 'he
             :title="color"
             @click="emit('surfaceColorChange', color)"
           />
-        </div>
+          </div>
+        </template>
+        <fieldset v-if="item.kind === 'door'" class="opening-state-control">
+          <legend>{{ t('Door state') }}</legend>
+          <label><input type="radio" name="door-open-state" :checked="!item.doorOpen" @change="emit('doorOpenChange', false)">{{ t('Closed') }}</label>
+          <label><input type="radio" name="door-open-state" :checked="item.doorOpen === true" @change="emit('doorOpenChange', true)">{{ t('Open') }}</label>
+        </fieldset>
+        <fieldset v-else-if="item.kind === 'window'" class="opening-state-control">
+          <legend>{{ t('Window wings') }}</legend>
+          <label><input type="radio" name="window-open-state" :checked="(item.windowOpenWings ?? 'closed') === 'closed'" @change="emit('windowOpenWingsChange', 'closed')">{{ t('Closed') }}</label>
+          <label><input type="radio" name="window-open-state" :checked="item.windowOpenWings === 'left'" @change="emit('windowOpenWingsChange', 'left')">{{ t('Left wing open') }}</label>
+          <label><input type="radio" name="window-open-state" :checked="item.windowOpenWings === 'right'" @change="emit('windowOpenWingsChange', 'right')">{{ t('Right wing open') }}</label>
+          <label><input type="radio" name="window-open-state" :checked="item.windowOpenWings === 'both'" @change="emit('windowOpenWingsChange', 'both')">{{ t('Both wings open') }}</label>
+        </fieldset>
       </div>
     </template>
   </aside>
@@ -219,6 +236,33 @@ function onWallDimensionChange(event: Event, dimension: 'length' | 'depth' | 'he
   .property-label {
     display: block;
     margin-bottom: 10px;
+  }
+}
+
+.opening-state-control {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+
+  legend {
+    margin-bottom: 10px;
+    color: #777a72;
+    font: 600 11px 'Manrope', sans-serif;
+  }
+
+  label {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: #41443e;
+    font: 500 11px 'Manrope', sans-serif;
+    cursor: pointer;
+  }
+
+  input {
+    accent-color: #668774;
   }
 }
 

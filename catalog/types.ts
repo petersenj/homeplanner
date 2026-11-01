@@ -2,6 +2,7 @@ import type * as THREE from 'three'
 
 export type FurnitureSide = 'top' | 'right' | 'bottom' | 'left'
 export type CatalogLanguage = 'en' | 'de'
+export type WindowOpenWings = 'closed' | 'left' | 'right' | 'both'
 
 export type SvgShape = {
   tag: 'path' | 'rect' | 'line' | 'circle'
@@ -20,6 +21,8 @@ export type CatalogItem = {
   rotation: number
   name?: string
   color?: string
+  doorOpen?: boolean
+  windowOpenWings?: WindowOpenWings
 }
 
 export type SceneItem = {
@@ -27,6 +30,8 @@ export type SceneItem = {
   depth: number
   height: number
   color: string
+  doorOpen?: boolean
+  windowOpenWings?: WindowOpenWings
 }
 
 export type SceneBoxOptions = {

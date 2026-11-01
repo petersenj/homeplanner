@@ -133,6 +133,13 @@
     "Appearance": "Darstellung",
     "Color": "Farbe",
     "Select color": "Farbe auswählen",
+    "Door state": "Türzustand",
+    "Window wings": "Fensterflügel",
+    "Closed": "Geschlossen",
+    "Open": "Offen",
+    "Left wing open": "Linker Flügel offen",
+    "Right wing open": "Rechter Flügel offen",
+    "Both wings open": "Beide Flügel offen",
     "Distance from floor": "Abstand zum Boden",
     "Rotate 90°": "Um 90° drehen"
   },

@@ -270,6 +270,8 @@ function addFurniture(item: RoomItem) {
     depth: item.depth / 100,
     height: item.height / 100,
     color: item.color ?? definition.color,
+    doorOpen: item.doorOpen,
+    windowOpenWings: item.windowOpenWings,
   }, group, { box, addLegs })
   pickableObjects.push(group)
 }

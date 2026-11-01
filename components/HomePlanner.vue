@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { defineAsyncComponent } from 'vue'
 import { getCatalogItem } from '~/catalog'
-import type { CatalogItem, FurnitureSide } from '~/catalog/types'
+import type { CatalogItem, FurnitureSide, WindowOpenWings } from '~/catalog/types'
 import type { CameraSnapshot, DragMeasurement, Measurement, Point, RoomEdge, Wall } from '~/types/planner'
 
 const RoomScene3D = defineAsyncComponent(() => import('~/components/RoomScene3D.vue'))
@@ -1598,6 +1598,14 @@ function updateSelectedSurfaceColor(color: string) {
   if (selectedItem.value) selectedItem.value.color = color
 }
 
+function updateSelectedDoorOpen(open: boolean) {
+  if (selectedItem.value?.kind === 'door') selectedItem.value.doorOpen = open
+}
+
+function updateSelectedWindowOpenWings(wings: WindowOpenWings) {
+  if (selectedItem.value?.kind === 'window') selectedItem.value.windowOpenWings = wings
+}
+
 function changeZoom(amount: number, anchorPoint?: Point) {
   const nextZoom = Math.min(5, Math.max(0.5, Math.round((zoom.value + amount) * 10) / 10))
   if (nextZoom === zoom.value) return
@@ -2094,6 +2102,8 @@ watch([items, wallSegments, roomWallDimensions, measurements, roomPoints, additi
         @rotate="rotateSelected"
         @rotation-change="updateSelectedRotation"
         @surface-color-change="updateSelectedSurfaceColor"
+        @door-open-change="updateSelectedDoorOpen"
+        @window-open-wings-change="updateSelectedWindowOpenWings"
         @wall-length-change="selectedRoomWall && updateRoomWallLength(selectedRoomWall.edge.id, $event)"
         @wall-depth-change="selectedRoomWall && updateRoomWallDimension(selectedRoomWall.edge.id, 'depth', $event)"
         @wall-height-change="selectedRoomWall && updateRoomWallDimension(selectedRoomWall.edge.id, 'height', $event)"

@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+import { getCatalogItem } from '~/catalog'
+import { addLegs, box } from '~/catalog/scene'
 const { t } = useAppLanguage()
 
 type RoomItem = {
   id: number
-  kind: 'chair' | 'table' | 'cupboard' | 'shelf' | 'cube' | 'window' | 'door'
+  kind: string
   x: number
   y: number
   width: number
@@ -38,16 +40,6 @@ const isFullscreen = ref(false)
 const showCameraFacingWalls = ref(true)
 const isTopDownView = ref(true)
 const selectedItem = computed(() => props.items.find((item) => item.id === props.selectedId) ?? null)
-const itemLabels: Record<RoomItem['kind'], string> = {
-  chair: 'Chair',
-  table: 'Table',
-  cupboard: 'Cupboard',
-  shelf: 'Shelf',
-  cube: 'Cube',
-  window: 'Window',
-  door: 'Door',
-}
-
 let renderer: THREE.WebGLRenderer | undefined
 let camera: THREE.PerspectiveCamera | undefined
 let controls: OrbitControls | undefined
@@ -87,28 +79,6 @@ function material(color: THREE.ColorRepresentation, roughness = 0.82, options: T
     if (parameters[key] === undefined) delete parameters[key]
   }
   return new THREE.MeshStandardMaterial(parameters)
-}
-
-function box(
-  parent: THREE.Object3D,
-  size: [number, number, number],
-  position: [number, number, number],
-  color: THREE.ColorRepresentation,
-  options: { roughness?: number; castShadow?: boolean; receiveShadow?: boolean; transparent?: boolean; opacity?: number; metalness?: number } = {},
-) {
-  const mesh = new THREE.Mesh(
-    new THREE.BoxGeometry(...size),
-    material(color, options.roughness ?? 0.82, {
-      transparent: options.transparent,
-      opacity: options.opacity,
-      metalness: options.metalness,
-    }),
-  )
-  mesh.position.set(...position)
-  mesh.castShadow = options.castShadow ?? true
-  mesh.receiveShadow = options.receiveShadow ?? true
-  parent.add(mesh)
-  return mesh
 }
 
 function addRoom() {
@@ -276,101 +246,21 @@ function addRoom() {
   }
 }
 
-function addLegs(group: THREE.Group, width: number, depth: number, height: number, color: string, inset = 0.1) {
-  const legColor = new THREE.Color(color).multiplyScalar(0.78)
-  for (const x of [-1, 1]) {
-    for (const z of [-1, 1]) {
-      box(
-        group,
-        [0.045, height, 0.045],
-        [x * (width / 2 - inset), height / 2, z * (depth / 2 - inset)],
-        legColor,
-      )
-    }
-  }
-}
-
 function addFurniture(item: RoomItem) {
   if (!content) return
   const { x, z } = roomPosition(item.x, item.y)
-  const width = item.width / 100
-  const depth = item.depth / 100
-  const height = item.height / 100
-  const color = item.color ?? ({
-    chair: '#c98d65',
-    table: '#b28a63',
-    cupboard: '#818d77',
-    shelf: '#a88c72',
-    cube: '#8097a8',
-    window: '#77b9c1',
-    door: '#c98d65',
-  }[item.kind])
+  const definition = getCatalogItem(item.kind)
   const group = new THREE.Group()
   group.position.set(x, Math.max(0, item.floorOffset ?? 0) / 100, z)
   group.rotation.y = -item.rotation * Math.PI / 180
   group.userData.itemId = item.id
   content.add(group)
-
-  if (item.kind === 'chair') {
-    const seatHeight = Math.min(0.48, height * 0.55)
-    box(group, [width, 0.1, depth], [0, seatHeight, 0], color)
-    box(group, [width * 0.92, 0.045, depth * 0.82], [0, seatHeight + 0.057, 0], '#dfbd9f')
-    box(group, [width * 0.88, height - seatHeight, 0.075], [0, (height + seatHeight) / 2, -depth * 0.42], color)
-    for (const px of [-1, 1]) {
-      for (const pz of [-1, 1]) {
-        box(group, [0.035, seatHeight, 0.035], [px * (width / 2 - 0.055), seatHeight / 2, pz * (depth / 2 - 0.055)], '#927153')
-      }
-    }
-  } else if (item.kind === 'table') {
-    const topThickness = Math.max(0.055, Math.min(0.1, height * 0.12))
-    addLegs(group, width, depth, Math.max(0.12, height - topThickness), color, 0.12)
-    box(group, [width, topThickness, depth], [0, height - topThickness / 2, 0], color)
-    box(group, [width * 0.92, 0.025, depth * 0.88], [0, height + 0.012, 0], '#c6a47e')
-  } else if (item.kind === 'cupboard') {
-    box(group, [width, height, depth], [0, height / 2, 0], color)
-    box(group, [width * 0.88, height * 0.9, 0.025], [0, height / 2, depth / 2 + 0.014], '#d9d1c3')
-    box(group, [0.014, height * 0.88, 0.035], [0, height / 2, depth / 2 + 0.03], '#898d7e')
-    for (const px of [-1, 1]) {
-      const knob = new THREE.Mesh(new THREE.SphereGeometry(0.018, 10, 8), material('#e9e0ce'))
-      knob.position.set(px * 0.045, height / 2, depth / 2 + 0.052)
-      group.add(knob)
-    }
-  } else if (item.kind === 'shelf') {
-    const shelfCount = 4
-    const supportWidth = Math.min(0.045, width * 0.12, depth * 0.12)
-    for (const px of [-1, 1]) {
-      for (const pz of [-1, 1]) {
-        box(
-          group,
-          [supportWidth, height, supportWidth],
-          [px * (width / 2 - supportWidth / 2), height / 2, pz * (depth / 2 - supportWidth / 2)],
-          color,
-        )
-      }
-    }
-    for (let index = 0; index < shelfCount; index++) {
-      const shelfY = index * (height - 0.035) / (shelfCount - 1) + 0.0175
-      box(
-        group,
-        [Math.max(0.02, width - supportWidth * 2), 0.035, Math.max(0.02, depth - supportWidth * 2)],
-        [0, shelfY, 0],
-        '#dbc9b1',
-      )
-    }
-  } else if (item.kind === 'window') {
-    box(group, [width, height, 0.045], [0, height / 2, 0], '#75b8c1', {
-      transparent: true,
-      opacity: 0.7,
-      roughness: 0.2,
-      castShadow: false,
-    })
-  } else if (item.kind === 'door') {
-    box(group, [width, height, Math.max(depth, 0.055)], [0, height / 2, 0], color)
-    box(group, [0.022, 0.08, 0.025], [width * 0.35, height * 0.48, depth / 2 + 0.02], '#ead8b7')
-  } else {
-    box(group, [width, height, depth], [0, height / 2, 0], color)
-    box(group, [width * 0.86, 0.015, depth * 0.86], [0, height + 0.01, 0], '#d0dce2', { castShadow: false })
-  }
+  definition.createScene({
+    width: item.width / 100,
+    depth: item.depth / 100,
+    height: item.height / 100,
+    color: item.color ?? definition.color,
+  }, group, { box, addLegs })
   pickableObjects.push(group)
 }
 
@@ -696,7 +586,7 @@ onBeforeUnmount(() => {
     <div class="scene-compass"><span>N</span><span>↑</span></div>
     <div v-if="selectedItem" class="scene-selection">
       <span :style="{ background: selectedItem.color || '#8e967e' }"></span>
-      <strong>{{ selectedItem.name || t(itemLabels[selectedItem.kind]) }}</strong>
+      <strong>{{ selectedItem.name || t(getCatalogItem(selectedItem.kind).label) }}</strong>
       <small>{{ selectedItem.width }} × {{ selectedItem.depth }} × {{ selectedItem.height }} cm</small>
     </div>
     <button class="scene-reset" :aria-label="t('Reset 3D camera')" :title="t('Reset camera view')" @click="resetCamera">↗ <span>{{ t('Reset view') }}</span></button>

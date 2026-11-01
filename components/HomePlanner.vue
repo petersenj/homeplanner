@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { defineAsyncComponent } from 'vue'
+import { getCatalogItem } from '~/catalog'
+import type { FurnitureSide } from '~/catalog/types'
 
 const RoomScene3D = defineAsyncComponent(() => import('~/components/RoomScene3D.vue'))
 const { language, setLanguage, t } = useAppLanguage()
 
 type Point = { x: number; y: number }
 type RoomCornerDrag = { corner: Point; pointerStart: Point; rooms: Point[][] }
-type FurnitureKind = 'chair' | 'table' | 'cupboard' | 'shelf' | 'cube' | 'window' | 'door'
-type FurnitureSide = 'top' | 'right' | 'bottom' | 'left'
+type FurnitureKind = string
 type PlanItem = {
   id: number
   kind: FurnitureKind
@@ -42,8 +43,6 @@ const defaultRoomPoints: Point[] = [
 ]
 const view = ref<'2d' | '3d'>('2d')
 const activeTool = ref<'select' | 'room' | 'addRoom' | 'measure' | 'window' | 'door' | 'cube' | 'furniture'>('select')
-const selectedCategory = ref('All items')
-const selectedWallCategory = ref('All items')
 const selectedId = ref<number | null>(null)
 const pendingPoint = ref<Point | null>(null)
 const measurementCursor = ref<Point | null>(null)
@@ -102,24 +101,6 @@ const items = ref<PlanItem[]>([
   { id: 7, kind: 'shelf', x: 700, y: 240, width: 100, depth: 40, height: 175, rotation: 0 },
 ])
 
-const catalog = [
-  { kind: 'chair' as const, label: 'Chair', detail: '48 × 48 cm', icon: 'chair' },
-  { kind: 'table' as const, label: 'Table', detail: '120 × 60 cm', icon: 'table' },
-  { kind: 'cupboard' as const, label: 'Cupboard', detail: '100 × 60 cm', icon: 'cupboard' },
-  { kind: 'shelf' as const, label: 'Shelf', detail: '100 × 40 cm', icon: 'shelf' },
-  { kind: 'cube' as const, label: 'Cube', detail: '100 × 100 cm', icon: 'cube' },
-]
-const categoryItems = computed(() => selectedCategory.value === 'All items'
-  ? catalog
-  : catalog.filter((entry) => selectedCategory.value === 'Misc'
-    ? entry.kind === 'cube'
-    : entry.kind !== 'cube'))
-const wallDetailCategories = ['All items', 'Windows', 'Doors']
-const wallDetailItems = computed(() => {
-  if (selectedWallCategory.value === 'Windows') return ['window'] as const
-  if (selectedWallCategory.value === 'Doors') return ['door'] as const
-  return ['window', 'door'] as const
-})
 const selectedItem = computed(() => items.value.find((item) => item.id === selectedId.value) ?? null)
 const placedCount = computed(() => items.value.length)
 const roomBounds = computed(() => {
@@ -271,7 +252,7 @@ const roomDimensionLabels = computed(() => roomEdges.value.flatMap((edge) => {
   const dy = edge.end.y - edge.start.y
   const edgeLength = Math.hypot(dx, dy)
   const openings = items.value
-    .filter((item) => item.kind === 'door' || item.kind === 'window')
+    .filter((item) => getCatalogItem(item.kind).wallMounted)
     .flatMap((item) => {
       const projected = projectPointToSegment({ x: item.x, y: item.y }, edge.start, edge.end)
       if (Math.hypot(projected.x - item.x, projected.y - item.y) > 10) return []
@@ -338,7 +319,7 @@ const roomDraftMeasurement = computed(() => {
 const dragMeasurements = computed<DragMeasurement[]>(() => {
   if (!isDragging.value || isRotating.value || !selectedItem.value || !showDimensions.value) return []
   const item = selectedItem.value
-  if (item.kind === 'door' || item.kind === 'window') {
+  if (getCatalogItem(item.kind).wallMounted) {
     const edge = nearestRoomEdge({ x: item.x, y: item.y })
     const projection = projectOnEdge({ x: item.x, y: item.y }, edge, item.width / 2)
     const fromStart = Math.max(0, projection.distance - item.width / 2)
@@ -551,10 +532,7 @@ function sideVector(side: FurnitureSide): Point {
 }
 
 function defaultRearSide(kind: FurnitureKind, width: number, depth: number): FurnitureSide {
-  if (kind === 'chair') return 'top'
-  if (kind === 'table') return width >= depth ? 'top' : 'left'
-  if (kind === 'cupboard' || kind === 'shelf') return width >= depth ? 'top' : 'left'
-  return 'top'
+  return getCatalogItem(kind).rearSide?.(width, depth) ?? 'top'
 }
 
 function snapFurnitureToWall(point: Point, item: PlanItem) {
@@ -888,16 +866,7 @@ function roomPolygonsWithSharedVertices(rooms: Point[][]) {
 }
 
 function dimensions(kind: FurnitureKind) {
-  const sizes: Record<FurnitureKind, [number, number, number]> = {
-    chair: [48, 48, 88],
-    table: [120, 60, 75],
-    cupboard: [100, 60, 190],
-    shelf: [100, 40, 175],
-    cube: [100, 100, 100],
-    window: [110, 12, 130],
-    door: [90, 15, 205],
-  }
-  return sizes[kind]
+  return getCatalogItem(kind).dimensions
 }
 
 function addItem(kind: FurnitureKind, at?: Point) {
@@ -910,9 +879,10 @@ function addItem(kind: FurnitureKind, at?: Point) {
   const [width, depth, height] = dimensions(kind)
   const id = nextId.value++
   const longestEdge = roomEdges.value.reduce((longest, edge) => edge.length > longest.length ? edge : longest, roomEdges.value[0]!)
-  const mountingEdge = kind === 'door' ? roomEdges.value[1] ?? longestEdge : longestEdge
+  const definition = getCatalogItem(kind)
+  const mountingEdge = definition.mountingEdge === 'second' ? roomEdges.value[1] ?? longestEdge : longestEdge
   const edgeAngle = Math.atan2(mountingEdge.end.y - mountingEdge.start.y, mountingEdge.end.x - mountingEdge.start.x) * 180 / Math.PI
-  const defaultPoint = kind === 'window' || kind === 'door'
+  const defaultPoint = definition.wallMounted
     ? { x: (mountingEdge.start.x + mountingEdge.end.x) / 2, y: (mountingEdge.start.y + mountingEdge.end.y) / 2 }
     : roomCenter.value
   const item: PlanItem = {
@@ -923,8 +893,8 @@ function addItem(kind: FurnitureKind, at?: Point) {
     width,
     depth,
     height,
-    floorOffset: kind === 'window' ? 100 : 0,
-    rotation: kind === 'window' || kind === 'door' ? edgeAngle : 0,
+    floorOffset: definition.defaultFloorOffset ?? 0,
+    rotation: definition.wallMounted ? edgeAngle : 0,
   }
   items.value.push(item)
   selectedId.value = id
@@ -1252,7 +1222,7 @@ function onCanvasPointerMove(event: PointerEvent) {
     if (isFurniturePlacementValid({ x: item.x, y: item.y }, item, rotation)) item.rotation = rotation
     return
   }
-  if (item.kind === 'door' || item.kind === 'window') {
+  if (getCatalogItem(item.kind).wallMounted) {
     const edge = nearestRoomEdge(point)
     const projected = projectOnEdge(point, edge, item.width / 2)
     item.x = projected.point.x
@@ -1499,15 +1469,11 @@ function formatLength(start: Point, end: Point) {
 }
 
 function itemColor(kind: FurnitureKind) {
-  const colors: Record<FurnitureKind, string> = {
-    chair: '#c98d65', table: '#b28a63', cupboard: '#818d77', shelf: '#a88c72',
-    cube: '#8097a8', window: '#77b9c1', door: '#c98d65',
-  }
-  return colors[kind]
+  return getCatalogItem(kind).color
 }
 
 function itemLabel(kind: FurnitureKind) {
-  return catalog.find((entry) => entry.kind === kind)?.label ?? (kind === 'cube' ? 'Cube' : kind[0].toUpperCase() + kind.slice(1))
+  return getCatalogItem(kind).label
 }
 
 function roomDisplayName(name: string | undefined, index: number) {
@@ -1595,7 +1561,7 @@ function moveSelectedItemWithKeys(timestamp: number) {
     dx = dx / length * speed * elapsed
     dy = dy / length * speed * elapsed
     const target = { x: item.x + dx, y: item.y + dy }
-    if (item.kind === 'door' || item.kind === 'window') {
+    if (getCatalogItem(item.kind).wallMounted) {
       const edge = nearestRoomEdge(target)
       const projected = projectOnEdge(target, edge, item.width / 2)
       item.x = projected.point.x
@@ -1657,11 +1623,9 @@ onMounted(() => {
       const plan = JSON.parse(savedPlan) as { items?: Array<PlanItem & { rearSide?: unknown }>; walls?: Wall[]; measurements?: Measurement[]; roomPoints?: Point[]; rooms?: Point[][]; roomNames?: string[] }
       if (Array.isArray(plan.items) && Array.isArray(plan.walls) && Array.isArray(plan.measurements)) {
         items.value = plan.items.map(({ rearSide: _rearSide, ...item }) => {
-          item.floorOffset ??= item.kind === 'window' ? 100 : 0
-          if (item.kind === 'shelf' && item.width === 42 && item.depth === 150 && item.height === 175) {
-            return { ...item, width: 150, depth: 42 }
-          }
-          return item
+          const definition = getCatalogItem(item.kind)
+          item.floorOffset ??= definition.defaultFloorOffset ?? 0
+          return definition.normalizeSavedItem?.(item) ?? item
         })
         wallSegments.value = plan.walls
         measurements.value = plan.measurements
@@ -1774,39 +1738,7 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
         </div>
 
         <div class="sidebar-section furniture-section">
-          <div class="section-heading"><span class="section-eyebrow">{{ t('FURNITURE & OBJECTS') }}</span><span class="count-pill">{{ categoryItems.length }}</span></div>
-          <div class="category-switcher">
-            <button v-for="category in ['All items', 'Furniture', 'Misc']" :key="category" :class="{ active: selectedCategory === category }" :aria-pressed="selectedCategory === category" @click="selectedCategory = category">{{ t(category) }}</button>
-          </div>
-          <div class="catalog-grid">
-            <button v-for="entry in categoryItems" :key="entry.kind" class="catalog-card" :disabled="!roomPoints.length" @click="addCatalogItem(entry.kind)">
-              <span class="catalog-icon" :class="`icon-${entry.icon}`">
-                <svg v-if="entry.kind === 'chair'" viewBox="0 0 42 42"><path d="M13 11h16v13H13zM11 24h20v4H11zM14 28l-2 8m16-8 2 8M13 18H9v7m20-7h4v7"/></svg>
-                <svg v-else-if="entry.kind === 'table'" viewBox="0 0 42 42"><path d="M8 15h26v4H8zm4 4v14m18-14v14M7 33h28"/></svg>
-                <svg v-else-if="entry.kind === 'cupboard'" viewBox="0 0 42 42"><path d="M11 7h20v29H11zm10 0v29m-7-17h2m8 0h2M8 36h26"/></svg>
-                <svg v-else-if="entry.kind === 'shelf'" viewBox="0 0 42 42"><path d="M11 7h20v29H11zm-3 9h26m-26 9h26m-26 9h26M14 11h3m8 0h3m-14 9h3m8 0h3m-14 9h3m8 0h3"/></svg>
-                <svg v-else viewBox="0 0 42 42"><path d="m8 13 13-7 13 7v16l-13 7-13-7V13Zm0 0 13 7 13-7m-13 7v16m-6-26 13 7"/></svg>
-              </span>
-              <strong>{{ t(entry.label) }}</strong><small>{{ entry.detail }}</small>
-              <span class="catalog-plus">+</span>
-            </button>
-          </div>
-          <div class="section-heading structure-heading"><span class="section-eyebrow">{{ t('WALL DETAILS') }}</span><span class="count-pill">{{ wallDetailItems.length }}</span></div>
-          <div class="category-switcher">
-            <button v-for="category in wallDetailCategories" :key="category" :class="{ active: selectedWallCategory === category }" :aria-pressed="selectedWallCategory === category" @click="selectedWallCategory = category">{{ t(category) }}</button>
-          </div>
-          <div class="catalog-grid">
-            <button v-for="kind in wallDetailItems" :key="kind" class="catalog-card" :disabled="!roomPoints.length" @click="addItem(kind)">
-              <span class="catalog-icon" :class="`icon-${kind}`">
-                <svg v-if="kind === 'window'" viewBox="0 0 42 42"><path d="M7 10h28v22H7zM7 16h28M21 10v22M11 13h6m8 0h6"/></svg>
-                <svg v-else viewBox="0 0 42 42"><path d="M9 35V7h24v28M9 35h24M14 35V12h14v23m-5-12h1"/></svg>
-              </span>
-              <strong>{{ t(kind === 'window' ? 'Window' : 'Door') }}</strong>
-              <small>{{ kind === 'window' ? '110 × 12 cm' : '90 × 15 cm' }}</small>
-              <span class="catalog-plus">+</span>
-            </button>
-          </div>
-          <div class="import-card import-planned" aria-disabled="true"><span class="import-icon">↥</span><span><strong>{{ t('Import 3D model') }}</strong><small>{{ t('Model import coming soon') }}</small></span></div>
+          <FurnitureCatalog :t="t" :can-place="Boolean(roomPoints.length)" @place="addCatalogItem" />
         </div>
 
       </div>
@@ -1936,43 +1868,10 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
               <text v-else-if="activeTool === 'addRoom' && !drawingRoomPoints.length && drawingCursorSnapsToWall" :x="drawingCursor?.x" :y="(drawingCursor?.y || 0) - 14" :transform="fixedSizeLabelTransform({ x: drawingCursor?.x || 0, y: (drawingCursor?.y || 0) - 14 })" text-anchor="middle" fill="#4f8063" font-size="10" font-weight="700">{{ t('START HERE') }}</text>
             </g>
             <g v-for="item in items" :key="item.id" class="plan-item" :class="{ 'is-selected': selectedId === item.id, 'is-dragging': isDragging && selectedId === item.id }" :transform="`translate(${item.x} ${item.y}) rotate(${item.rotation})`" @pointerdown="itemPointerDown($event, item)" @click.stop="selectedId = item.id">
-              <g v-if="item.kind === 'chair'" filter="url(#soft-shadow)">
-                <rect x="-22" y="-20" width="44" height="37" rx="11" :fill="item.color || '#d8b69a'" stroke="#a78366" stroke-width="1.5"/>
-                <rect x="-18" y="-18" width="36" height="9" rx="5" fill="#e6cbb5"/>
-                <path d="M-17 12v10m34-10v10" stroke="#9a7457" stroke-width="3" stroke-linecap="round"/>
-              </g>
-              <g v-else-if="item.kind === 'table'" filter="url(#soft-shadow)">
-                <rect :x="-item.width / 2" :y="-item.depth / 2" :width="item.width" :height="item.depth" rx="9" fill="#bd9a72" stroke="#94734f" stroke-width="2"/>
-                <rect :x="-item.width / 2 + 7" :y="-item.depth / 2 + 7" :width="item.width - 14" :height="item.depth - 14" rx="5" fill="#c9aa86"/>
-                <path :d="`M${-item.width / 2 + 15} ${item.depth / 2 - 6}v13m${item.width - 30} -13v13`" stroke="#94734f" stroke-width="5" stroke-linecap="round"/>
-              </g>
-              <g v-else-if="item.kind === 'cupboard'">
-                <rect :x="-item.width / 2" :y="-item.depth / 2" :width="item.width" :height="item.depth" rx="5" :fill="item.color || '#99a08e'" stroke="#777c6c" stroke-width="1.5"/>
-                <line y1="-10" y2="10" stroke="#e0e0d4" stroke-width="2"/>
-                <circle cx="4" cy="0" r="1.5" fill="#777c6c"/>
-              </g>
-              <g v-else-if="item.kind === 'shelf'">
-                <rect :x="-item.width / 2" :y="-item.depth / 2" :width="item.width" :height="item.depth" rx="3" fill="#f5f0e7" fill-opacity=".72" stroke="#8d7964" stroke-width="1.5"/>
-                <g stroke="#a88c72" stroke-width="2">
-                  <line :x1="-item.width / 2 + 4" :y1="-item.depth / 4" :x2="item.width / 2 - 4" :y2="-item.depth / 4"/>
-                  <line :x1="-item.width / 2 + 4" :y1="item.depth / 4" :x2="item.width / 2 - 4" :y2="item.depth / 4"/>
-                </g>
-                <g fill="#8d7964">
-                  <circle :cx="-item.width / 2 + 3" :cy="-item.depth / 2 + 3" r="2"/>
-                  <circle :cx="item.width / 2 - 3" :cy="-item.depth / 2 + 3" r="2"/>
-                  <circle :cx="-item.width / 2 + 3" :cy="item.depth / 2 - 3" r="2"/>
-                  <circle :cx="item.width / 2 - 3" :cy="item.depth / 2 - 3" r="2"/>
-                </g>
-              </g>
-              <g v-else-if="item.kind === 'window'"><rect :x="-item.width / 2" y="-6" :width="item.width" height="12" rx="2" fill="#77b9c1" stroke="#3f8e98" stroke-width="2"/><path :d="`M${-item.width / 2 + 4} 0h${item.width - 8}`" stroke="#e9fbfb" stroke-width="2"/></g>
-              <g v-else-if="item.kind === 'door'"><rect :x="-item.width / 2" y="-7" :width="item.width" height="14" rx="2" fill="#c98d65" stroke="#986746" stroke-width="1.5"/><circle :cx="item.width / 2 - 10" cy="0" r="2" fill="#f3dfbb"/></g>
-              <g v-else filter="url(#soft-shadow)">
-                <rect :x="-item.width / 2" :y="-item.depth / 2" :width="item.width" :height="item.depth" rx="7" :fill="item.color || '#94a9b8'" stroke="#6c8494" stroke-width="2"/>
-                <path :d="`M${-item.width / 2 + 8} ${-item.depth / 2 + 8}h${item.width - 16}v${item.depth - 16}h${-item.width + 16}z`" fill="none" stroke="#d7e1e7"/>
-              </g>
+              <FurniturePlanGraphic :item="item" />
               <rect v-if="selectedId === item.id" :x="-item.width / 2 - 6" :y="-item.depth / 2 - 6" :width="item.width + 12" :height="item.depth + 12" rx="12" fill="none" stroke="#668774" stroke-width="2" stroke-dasharray="4 3"/>
               <g
-                v-if="selectedId === item.id && item.kind !== 'door' && item.kind !== 'window'"
+                v-if="selectedId === item.id && !getCatalogItem(item.kind).wallMounted"
                 class="rotation-handle"
                 :transform="`translate(${item.width / 2 + 14} ${-item.depth / 2 - 14}) rotate(${-item.rotation})`"
                 @pointerdown="rotationHandlePointerDown($event, item)"

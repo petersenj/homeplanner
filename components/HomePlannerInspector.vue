@@ -1,6 +1,6 @@
 <script setup lang="ts">
 type PlanItem = {
-  kind: 'chair' | 'table' | 'cupboard' | 'shelf' | 'cube' | 'window' | 'door'
+  kind: string
   name?: string
   width: number
   depth: number
@@ -12,7 +12,7 @@ type PlanItem = {
 defineProps<{
   item: PlanItem
   t: (key: string) => string
-  itemLabel: (kind: PlanItem['kind']) => string
+  itemLabel: (kind: string) => string
 }>()
 
 const emit = defineEmits<{

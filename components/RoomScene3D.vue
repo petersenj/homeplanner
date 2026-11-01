@@ -50,6 +50,8 @@ let animationFrame = 0
 let raycaster: THREE.Raycaster | undefined
 let pointer: THREE.Vector2 | undefined
 let pickableObjects: THREE.Object3D[] = []
+const itemGroups = new Map<number, THREE.Group>()
+const rotationAnimations = new Map<number, { startedAt: number; startRotation: number; endRotation: number; targetRotation: number }>()
 let perimeterWalls: Array<{ group: THREE.Group; midpoint: THREE.Vector3; outward: THREE.Vector3; alwaysVisible: boolean }> = []
 let cameraTransition: {
   startedAt: number
@@ -255,6 +257,7 @@ function addFurniture(item: RoomItem) {
   group.rotation.y = -item.rotation * Math.PI / 180
   group.userData.itemId = item.id
   content.add(group)
+  itemGroups.set(item.id, group)
   definition.createScene({
     width: item.width / 100,
     depth: item.depth / 100,
@@ -283,6 +286,8 @@ function updateScene() {
   if (!content) return
   disposeGroup(content)
   pickableObjects = []
+  itemGroups.clear()
+  rotationAnimations.clear()
   perimeterWalls = []
   addRoom()
   for (const item of props.items) addFurniture(item)
@@ -293,6 +298,45 @@ function updateScene() {
       const outline = new THREE.BoxHelper(selected, '#64846c')
       outline.userData.decorative = true
       content.add(outline)
+    }
+  }
+}
+
+function updateItemRotations() {
+  const reduceMotion = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  for (const item of props.items) {
+    const group = itemGroups.get(item.id)
+    if (!group) continue
+    const targetRotation = -item.rotation * Math.PI / 180
+    const startRotation = group.rotation.y
+    const delta = THREE.MathUtils.euclideanModulo(targetRotation - startRotation + Math.PI, Math.PI * 2) - Math.PI
+    if (reduceMotion || Math.abs(delta) < 0.0001) {
+      group.rotation.y = targetRotation
+      rotationAnimations.delete(item.id)
+      continue
+    }
+    rotationAnimations.set(item.id, {
+      startedAt: performance.now(),
+      startRotation,
+      endRotation: startRotation + delta,
+      targetRotation,
+    })
+  }
+}
+
+function animateItemRotations(timestamp: number) {
+  for (const [id, animation] of rotationAnimations) {
+    const group = itemGroups.get(id)
+    if (!group) {
+      rotationAnimations.delete(id)
+      continue
+    }
+    const progress = Math.min((timestamp - animation.startedAt) / 220, 1)
+    const eased = 1 - (1 - progress) ** 3
+    group.rotation.y = animation.startRotation + (animation.endRotation - animation.startRotation) * eased
+    if (progress >= 1) {
+      group.rotation.y = animation.targetRotation
+      rotationAnimations.delete(id)
     }
   }
 }
@@ -329,6 +373,7 @@ function resize() {
 
 function render(timestamp: number) {
   if (renderer && scene && camera && controls) {
+    animateItemRotations(timestamp)
     if (cameraTransition) {
       const transition = cameraTransition
       const progress = Math.min((timestamp - transition.startedAt) / transition.duration, 1)
@@ -475,7 +520,15 @@ function onControlsStart() {
   emit('select', null)
 }
 
-watch(() => [props.items, props.walls, props.rooms, props.selectedId, props.roomWidth, props.roomDepth], updateScene, { deep: true })
+watch(() => [
+  props.items.map((item) => [item.id, item.kind, item.x, item.y, item.width, item.depth, item.height, item.floorOffset, item.name, item.color]),
+  props.walls,
+  props.rooms,
+  props.selectedId,
+  props.roomWidth,
+  props.roomDepth,
+], updateScene, { deep: true })
+watch(() => props.items.map((item) => [item.id, item.rotation]), updateItemRotations, { deep: true })
 watch(() => [props.roomWidth, props.roomDepth], positionCamera)
 
 onMounted(() => {

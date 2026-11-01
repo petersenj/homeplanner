@@ -101,6 +101,10 @@ const items = ref<PlanItem[]>([
   { id: 6, kind: 'cupboard', x: 220, y: 140, width: 100, depth: 60, height: 190, rotation: 0 },
   { id: 7, kind: 'shelf', x: 700, y: 240, width: 100, depth: 40, height: 175, rotation: 0 },
 ])
+const planDisplayRotations = reactive(new Map<number, number>())
+const planRotationAnimations = new Map<number, { startedAt: number; startRotation: number; endRotation: number; finalRotation: number }>()
+let planRotationFrame = 0
+let shouldAnimatePlanRotations = false
 
 const selectedItem = computed(() => items.value.find((item) => item.id === selectedId.value) ?? null)
 const placedCount = computed(() => items.value.length)
@@ -535,6 +539,59 @@ function sideVector(side: FurnitureSide): Point {
 function normalizeRotation(rotation: number) {
   return ((rotation % 360) + 360) % 360
 }
+
+function schedulePlanRotationFrame() {
+  if (!planRotationFrame) planRotationFrame = window.requestAnimationFrame(animatePlanRotations)
+}
+
+function animatePlanRotations(timestamp: number) {
+  planRotationFrame = 0
+  for (const [id, animation] of planRotationAnimations) {
+    const progress = Math.min((timestamp - animation.startedAt) / 180, 1)
+    const eased = 1 - (1 - progress) ** 3
+    planDisplayRotations.set(id, animation.startRotation + (animation.endRotation - animation.startRotation) * eased)
+    if (progress >= 1) {
+      planDisplayRotations.set(id, animation.finalRotation)
+      planRotationAnimations.delete(id)
+    }
+  }
+  if (planRotationAnimations.size) schedulePlanRotationFrame()
+}
+
+watch(() => items.value.map((item) => [item.id, item.rotation] as const), (rotations) => {
+  const activeIds = new Set(rotations.map(([id]) => id))
+  for (const id of planDisplayRotations.keys()) {
+    if (activeIds.has(id)) continue
+    planDisplayRotations.delete(id)
+    planRotationAnimations.delete(id)
+  }
+  for (const [id, rotation] of rotations) {
+    const targetRotation = normalizeRotation(rotation)
+    const startRotation = planDisplayRotations.get(id)
+    if (startRotation === undefined) {
+      planDisplayRotations.set(id, targetRotation)
+      continue
+    }
+    if (!shouldAnimatePlanRotations || (import.meta.client && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
+      planDisplayRotations.set(id, targetRotation)
+      planRotationAnimations.delete(id)
+      continue
+    }
+    const delta = ((targetRotation - normalizeRotation(startRotation) + 540) % 360) - 180
+    if (Math.abs(delta) < 0.001) {
+      planDisplayRotations.set(id, targetRotation)
+      planRotationAnimations.delete(id)
+      continue
+    }
+    planRotationAnimations.set(id, {
+      startedAt: performance.now(),
+      startRotation,
+      endRotation: startRotation + delta,
+      finalRotation: targetRotation,
+    })
+  }
+  if (planRotationAnimations.size) schedulePlanRotationFrame()
+}, { flush: 'sync', immediate: true })
 
 function defaultRearSide(kind: FurnitureKind, width: number, depth: number): FurnitureSide {
   return getCatalogItem(kind).rearSide?.(width, depth) ?? 'top'
@@ -1660,6 +1717,7 @@ onMounted(() => {
       console.error(t('Could not restore the saved room plan.'), error)
     }
   }
+  shouldAnimatePlanRotations = true
 })
 onBeforeUnmount(() => {
   window.removeEventListener('resize', syncSidebarToViewport)
@@ -1671,6 +1729,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('keyup', onKeyboardMoveKeyUp)
   window.removeEventListener('blur', onWindowBlur)
   stopKeyboardMovement()
+  window.cancelAnimationFrame(planRotationFrame)
+  planRotationAnimations.clear()
 })
 watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, roomNames], () => {
   if (import.meta.client) {
@@ -1879,21 +1939,23 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
               <text v-if="drawingCursorClosesRoom" :x="drawingCursor?.x" :y="(drawingCursor?.y || 0) - 14" :transform="fixedSizeLabelTransform({ x: drawingCursor?.x || 0, y: (drawingCursor?.y || 0) - 14 })" text-anchor="middle" fill="#4f8063" font-size="10" font-weight="700">{{ t(activeTool === 'addRoom' ? 'FINISH ON WALL' : 'CLOSE ROOM') }}</text>
               <text v-else-if="activeTool === 'addRoom' && !drawingRoomPoints.length && drawingCursorSnapsToWall" :x="drawingCursor?.x" :y="(drawingCursor?.y || 0) - 14" :transform="fixedSizeLabelTransform({ x: drawingCursor?.x || 0, y: (drawingCursor?.y || 0) - 14 })" text-anchor="middle" fill="#4f8063" font-size="10" font-weight="700">{{ t('START HERE') }}</text>
             </g>
-            <g v-for="item in items" :key="item.id" class="plan-item" :class="{ 'is-selected': selectedId === item.id, 'is-dragging': isDragging && selectedId === item.id }" :transform="`translate(${item.x} ${item.y}) rotate(${item.rotation})`" @pointerdown="itemPointerDown($event, item)" @click.stop="selectedId = item.id">
-              <FurniturePlanGraphic :item="item" />
-              <rect v-if="selectedId === item.id" :x="-item.width / 2 - 6" :y="-item.depth / 2 - 6" :width="item.width + 12" :height="item.depth + 12" rx="12" fill="none" stroke="#668774" stroke-width="2" stroke-dasharray="4 3"/>
-              <g
-                v-if="selectedId === item.id && !getCatalogItem(item.kind).wallMounted"
-                class="rotation-handle"
-                :transform="`translate(${item.width / 2 + 14} ${-item.depth / 2 - 14}) rotate(${-item.rotation})`"
-                @pointerdown="rotationHandlePointerDown($event, item)"
-                @click.stop
-              >
-                <title>{{ t('Drag to rotate · 10° steps · hold Shift for 1° steps') }}</title>
-                <circle r="11" fill="#fff" stroke="#668774" stroke-width="1.5"/>
-                <path d="M-4.7-4.7a6.7 6.7 0 1 1-1.8 6.9M-6.2-6.4v3.8h3.8" fill="none" stroke="#668774" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            <g v-for="item in items" :key="item.id" class="plan-item" :class="{ 'is-selected': selectedId === item.id, 'is-dragging': isDragging && selectedId === item.id }" :transform="`translate(${item.x} ${item.y})`" @pointerdown="itemPointerDown($event, item)" @click.stop="selectedId = item.id">
+              <g :transform="`rotate(${planDisplayRotations.get(item.id) ?? item.rotation})`">
+                <FurniturePlanGraphic :item="item" />
+                <rect v-if="selectedId === item.id" :x="-item.width / 2 - 6" :y="-item.depth / 2 - 6" :width="item.width + 12" :height="item.depth + 12" rx="12" fill="none" stroke="#668774" stroke-width="2" stroke-dasharray="4 3"/>
+                <g
+                  v-if="selectedId === item.id && !getCatalogItem(item.kind).wallMounted"
+                  class="rotation-handle"
+                  :transform="`translate(${item.width / 2 + 14} ${-item.depth / 2 - 14}) rotate(${-item.rotation})`"
+                  @pointerdown="rotationHandlePointerDown($event, item)"
+                  @click.stop
+                >
+                  <title>{{ t('Drag to rotate · 10° steps · hold Shift for 1° steps') }}</title>
+                  <circle r="11" fill="#fff" stroke="#668774" stroke-width="1.5"/>
+                  <path d="M-4.7-4.7a6.7 6.7 0 1 1-1.8 6.9M-6.2-6.4v3.8h3.8" fill="none" stroke="#668774" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                </g>
+                <title>{{ item.name || itemLabel(item.kind) }} · {{ item.width }} × {{ item.depth }} cm</title>
               </g>
-              <title>{{ item.name || itemLabel(item.kind) }} · {{ item.width }} × {{ item.depth }} cm</title>
             </g>
             <g v-if="activeTool === 'select' && roomCorners.length" class="room-corner-handles">
               <g

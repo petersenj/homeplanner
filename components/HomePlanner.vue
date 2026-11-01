@@ -97,6 +97,10 @@ const items = ref<PlanItem[]>([
 ])
 
 const selectedItem = computed(() => items.value.find((item) => item.id === selectedId.value) ?? null)
+const selectedSurfaceColors = computed(() => selectedItem.value ? getCatalogItem(selectedItem.value.kind).surfaceColors ?? [] : [])
+const selectedSurfaceColor = computed(() => selectedItem.value
+  ? selectedItem.value.color ?? itemColor(selectedItem.value.kind)
+  : '')
 const selectedRoomWall = computed(() => {
   const edge = roomEdges.value.find((roomEdge) => roomEdge.id === selectedWallId.value)
   if (!edge) return null
@@ -905,6 +909,7 @@ function addItem(kind: FurnitureKind, at?: Point) {
     height,
     floorOffset: definition.defaultFloorOffset ?? 0,
     rotation: definition.wallMounted ? normalizeRotation(edgeAngle) : 0,
+    ...(definition.surfaceColors ? { color: definition.color } : {}),
   }
   items.value.push(item)
   selectedWallId.value = null
@@ -1589,6 +1594,10 @@ function updateSelectedRotation(rotation: number) {
   if (selectedItem.value) selectedItem.value.rotation = normalizeRotation(rotation)
 }
 
+function updateSelectedSurfaceColor(color: string) {
+  if (selectedItem.value) selectedItem.value.color = color
+}
+
 function changeZoom(amount: number, anchorPoint?: Point) {
   const nextZoom = Math.min(5, Math.max(0.5, Math.round((zoom.value + amount) * 10) / 10))
   if (nextZoom === zoom.value) return
@@ -2077,11 +2086,14 @@ watch([items, wallSegments, roomWallDimensions, measurements, roomPoints, additi
         v-if="selectedItem || selectedRoomWall"
         :item="selectedItem"
         :wall="selectedRoomWall"
+        :surface-colors="selectedSurfaceColors"
+        :selected-surface-color="selectedSurfaceColor"
         :t="t"
         :item-label="itemLabel"
         @close="selectedId = null; selectedWallId = null"
         @rotate="rotateSelected"
         @rotation-change="updateSelectedRotation"
+        @surface-color-change="updateSelectedSurfaceColor"
         @wall-length-change="selectedRoomWall && updateRoomWallLength(selectedRoomWall.edge.id, $event)"
         @wall-depth-change="selectedRoomWall && updateRoomWallDimension(selectedRoomWall.edge.id, 'depth', $event)"
         @wall-height-change="selectedRoomWall && updateRoomWallDimension(selectedRoomWall.edge.id, 'height', $event)"

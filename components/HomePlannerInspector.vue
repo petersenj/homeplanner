@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import type { CatalogItem } from '~/catalog/types'
 
-type PlanItem = Pick<CatalogItem, 'kind' | 'name' | 'width' | 'depth' | 'height' | 'rotation' | 'floorOffset'>
+type PlanItem = Pick<CatalogItem, 'kind' | 'name' | 'width' | 'depth' | 'height' | 'rotation' | 'floorOffset' | 'color'>
 type WallInspector = { length: number; depth: number; height: number }
 
-defineProps<{
+const props = defineProps<{
   item: PlanItem | null
   wall: WallInspector | null
+  surfaceColors: string[]
+  selectedSurfaceColor: string
   t: (key: string) => string
   itemLabel: (kind: string) => string
 }>()
@@ -16,10 +18,17 @@ const emit = defineEmits<{
   rotate: []
   remove: []
   rotationChange: [rotation: number]
+  surfaceColorChange: [color: string]
   wallLengthChange: [length: number]
   wallDepthChange: [depth: number]
   wallHeightChange: [height: number]
 }>()
+
+const activeTab = ref<'properties' | 'appearance'>('properties')
+
+watch(() => props.surfaceColors.length, (count) => {
+  if (!count) activeTab.value = 'properties'
+})
 
 function onRotationChange(event: Event) {
   if (!(event.target instanceof HTMLInputElement)) return
@@ -57,34 +66,73 @@ function onWallDimensionChange(event: Event, dimension: 'length' | 'depth' | 'he
           @change="onWallDimensionChange($event, 'height')"></label>
     </template>
     <template v-else-if="item">
-      <div class="property-row"><label class="property-label">{{ t('Width') }} <span>cm</span><input
-            v-model.number="item.width" type="number" min="1"></label><label class="property-label">{{ t('Depth') }}
-          <span>cm</span><input v-model.number="item.depth" type="number" min="1"></label></div>
-      <div class="property-row"><label class="property-label">{{ t('Height') }} <span>cm</span><input
-            v-model.number="item.height" type="number" min="1"></label><label class="property-label rotation-property-label">{{ t('Rotation') }}
-          <span>°</span>
-          <div class="rotation-controls">
-            <input
-              :value="item.rotation"
-              :aria-label="t('Rotation')"
-              type="number"
-              min="0"
-              max="360"
-              step="any"
-              @change="onRotationChange"
-            >
-            <button
-              class="rotate-button"
-              type="button"
-              :aria-label="t('Rotate 90°')"
-              :title="t('Rotate 90°')"
-              @click="emit('rotate')"
-            >↻</button>
-          </div>
-        </label></div>
-      <label class="property-label">{{ t('Distance from floor') }} <span>cm</span><input v-model.number="item.floorOffset"
-          type="number" min="0" step="1"></label>
-      <button class="delete-button" @click="emit('remove')">{{ t('Remove object') }}</button>
+      <div v-if="surfaceColors.length" class="inspector-tabs" role="tablist">
+        <button
+          id="properties-tab"
+          class="inspector-tab"
+          :class="{ 'is-active': activeTab === 'properties' }"
+          role="tab"
+          :aria-selected="activeTab === 'properties'"
+          aria-controls="properties-panel"
+          @click="activeTab = 'properties'"
+        >{{ t('Properties') }}</button>
+        <button
+          id="appearance-tab"
+          class="inspector-tab"
+          :class="{ 'is-active': activeTab === 'appearance' }"
+          role="tab"
+          :aria-selected="activeTab === 'appearance'"
+          aria-controls="appearance-panel"
+          @click="activeTab = 'appearance'"
+        >{{ t('Appearance') }}</button>
+      </div>
+      <div v-if="activeTab === 'properties' || !surfaceColors.length" id="properties-panel" role="tabpanel" aria-labelledby="properties-tab">
+        <div class="property-row"><label class="property-label">{{ t('Width') }} <span>cm</span><input
+              v-model.number="item.width" type="number" min="1"></label><label class="property-label">{{ t('Depth') }}
+            <span>cm</span><input v-model.number="item.depth" type="number" min="1"></label></div>
+        <div class="property-row"><label class="property-label">{{ t('Height') }} <span>cm</span><input
+              v-model.number="item.height" type="number" min="1"></label><label class="property-label rotation-property-label">{{ t('Rotation') }}
+            <span>°</span>
+            <div class="rotation-controls">
+              <input
+                :value="item.rotation"
+                :aria-label="t('Rotation')"
+                type="number"
+                min="0"
+                max="360"
+                step="any"
+                @change="onRotationChange"
+              >
+              <button
+                class="rotate-button"
+                type="button"
+                :aria-label="t('Rotate 90°')"
+                :title="t('Rotate 90°')"
+                @click="emit('rotate')"
+              >↻</button>
+            </div>
+          </label></div>
+        <label class="property-label">{{ t('Distance from floor') }} <span>cm</span><input v-model.number="item.floorOffset"
+            type="number" min="0" step="1"></label>
+        <button class="delete-button" @click="emit('remove')">{{ t('Remove object') }}</button>
+      </div>
+      <div v-else id="appearance-panel" class="appearance-panel" role="tabpanel" aria-labelledby="appearance-tab">
+        <span class="property-label">{{ t('Color') }}</span>
+        <div class="surface-swatches" role="group" :aria-label="t('Color')">
+          <button
+            v-for="color in surfaceColors"
+            :key="color"
+            class="surface-swatch"
+            :class="{ 'is-selected': selectedSurfaceColor.toLowerCase() === color.toLowerCase() }"
+            type="button"
+            :style="{ '--swatch-color': color }"
+            :aria-label="`${t('Select color')} ${color}`"
+            :aria-pressed="selectedSurfaceColor.toLowerCase() === color.toLowerCase()"
+            :title="color"
+            @click="emit('surfaceColorChange', color)"
+          />
+        </div>
+      </div>
     </template>
   </aside>
 </template>
@@ -142,6 +190,61 @@ function onWallDimensionChange(event: Event, dimension: 'length' | 'depth' | 'he
   &-heading .icon-button {
     font-size: 19px;
     line-height: 17px;
+  }
+}
+
+.inspector-tabs {
+  display: flex;
+  gap: 16px;
+  margin: -2px 0 16px;
+  border-bottom: 1px solid #e8e7e0;
+}
+
+.inspector-tab {
+  padding: 0 0 8px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #777a72;
+  font: 600 12px 'Manrope', sans-serif;
+  cursor: pointer;
+
+  &.is-active {
+    border-bottom-color: #7a927c;
+    color: #41443e;
+  }
+}
+
+.appearance-panel {
+  .property-label {
+    display: block;
+    margin-bottom: 10px;
+  }
+}
+
+.surface-swatches {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+}
+
+.surface-swatch {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--swatch-color);
+  box-shadow: 0 0 0 1px #d8d8d0;
+  cursor: pointer;
+
+  &.is-selected {
+    box-shadow: 0 0 0 2px #526d57;
+  }
+
+  &:focus-visible {
+    outline: 2px solid #526d57;
+    outline-offset: 3px;
   }
 }
 

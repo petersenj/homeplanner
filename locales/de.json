@@ -129,6 +129,10 @@
     "Depth": "Tiefe",
     "Height": "Höhe",
     "Rotation": "Drehung",
+    "Properties": "Eigenschaften",
+    "Appearance": "Darstellung",
+    "Color": "Farbe",
+    "Select color": "Farbe auswählen",
     "Distance from floor": "Abstand zum Boden",
     "Rotate 90°": "Um 90° drehen"
   },

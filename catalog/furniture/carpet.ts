@@ -5,13 +5,14 @@ export const definition = {
   label: { en: 'Carpet', de: 'Teppich' },
   detail: '160 × 230 cm',
   dimensions: [160, 230, 1],
-  color: '#a86f5b',
+  color: '#404040',
+  surfaceColors: ['#404040', '#000000'],
   catalogIcon: [
     { tag: 'rect', attributes: { x: 7, y: 6, width: 28, height: 30, rx: 3 } },
     { tag: 'rect', attributes: { x: 11, y: 10, width: 20, height: 22, rx: 2 } },
   ],
   planShapes: (item) => [
-    { tag: 'rect', attributes: { x: -item.width / 2, y: -item.depth / 2, width: item.width, height: item.depth, rx: 8, fill: item.color || '#a86f5b', stroke: '#805747', 'stroke-width': 2 } },
+    { tag: 'rect', attributes: { x: -item.width / 2, y: -item.depth / 2, width: item.width, height: item.depth, rx: 8, fill: item.color || '#404040', stroke: '#282828', 'stroke-width': 2 } },
     { tag: 'rect', attributes: { x: -item.width / 2 + 8, y: -item.depth / 2 + 8, width: item.width - 16, height: item.depth - 16, rx: 5, fill: 'none', stroke: '#e5c7a6', 'stroke-width': 2 } },
   ],
   createScene: (item, group, { box }) => {

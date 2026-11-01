@@ -63,6 +63,7 @@ export type CatalogItemDefinition = {
   detail: string
   dimensions: [width: number, depth: number, height: number]
   color: string
+  surfaceColors?: string[]
   catalogIcon: SvgShape[]
   planFilter?: 'url(#soft-shadow)'
   planShapes: (item: CatalogItem) => SvgShape[]

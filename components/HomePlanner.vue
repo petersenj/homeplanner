@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { defineAsyncComponent } from 'vue'
 import { getCatalogItem } from '~/catalog'
-import type { CatalogItem, FurnitureSide, WindowOpenWings } from '~/catalog/types'
+import type { CatalogItem, FurnitureSide } from '~/catalog/types'
 import type { CameraSnapshot, DragMeasurement, Measurement, Point, RoomEdge, Wall } from '~/types/planner'
 
 const RoomScene3D = defineAsyncComponent(() => import('~/components/RoomScene3D.vue'))
@@ -89,17 +89,18 @@ let keyboardMoveFrame = 0
 let keyboardMoveStartedAt = 0
 let keyboardMoveLastFrame = 0
 const items = ref<PlanItem[]>([
-  { id: 1, kind: 'table', x: 395, y: 305, width: 120, depth: 60, height: 75, rotation: 0 },
-  { id: 2, kind: 'chair', x: 345, y: 280, width: 48, depth: 48, height: 88, rotation: 0 },
-  { id: 3, kind: 'chair', x: 545, y: 280, width: 48, depth: 48, height: 88, rotation: 0 },
-  { id: 4, kind: 'chair', x: 345, y: 385, width: 48, depth: 48, height: 88, rotation: 180 },
-  { id: 5, kind: 'chair', x: 545, y: 385, width: 48, depth: 48, height: 88, rotation: 180 },
-  { id: 6, kind: 'cupboard', x: 220, y: 140, width: 100, depth: 60, height: 190, rotation: 0 },
-  { id: 7, kind: 'shelf', x: 700, y: 240, width: 100, depth: 40, height: 175, rotation: 0 },
+  { id: 1, kind: 'table', section: 'catalog', x: 395, y: 305, width: 120, depth: 60, height: 75, rotation: 0 },
+  { id: 2, kind: 'chair', section: 'catalog', x: 345, y: 280, width: 48, depth: 48, height: 88, rotation: 0 },
+  { id: 3, kind: 'chair', section: 'catalog', x: 545, y: 280, width: 48, depth: 48, height: 88, rotation: 0 },
+  { id: 4, kind: 'chair', section: 'catalog', x: 345, y: 385, width: 48, depth: 48, height: 88, rotation: 180 },
+  { id: 5, kind: 'chair', section: 'catalog', x: 545, y: 385, width: 48, depth: 48, height: 88, rotation: 180 },
+  { id: 6, kind: 'cupboard', section: 'catalog', x: 220, y: 140, width: 100, depth: 60, height: 190, rotation: 0 },
+  { id: 7, kind: 'shelf', section: 'catalog', x: 700, y: 240, width: 100, depth: 40, height: 175, rotation: 0 },
 ])
 
 const selectedItem = computed(() => items.value.find((item) => item.id === selectedId.value) ?? null)
 const selectedSurfaceColors = computed(() => selectedItem.value ? getCatalogItem(selectedItem.value.kind).surfaceColors ?? [] : [])
+const selectedItemOpenable = computed(() => selectedItem.value ? getCatalogItem(selectedItem.value.kind).openable ?? false : false)
 const selectedSurfaceColor = computed(() => selectedItem.value
   ? selectedItem.value.color ?? itemColor(selectedItem.value.kind)
   : '')
@@ -559,7 +560,7 @@ function normalizeRotation(rotation: number) {
 }
 
 function isWallOpening(item: PlanItem) {
-  return item.kind === 'door' || item.kind === 'window'
+  return item.section === 'wall-details'
 }
 
 function wallMountedRotationOffset(rotation: number, edge: Pick<RoomEdge, 'start' | 'end'>) {
@@ -991,6 +992,8 @@ function addItem(kind: FurnitureKind, at?: Point) {
   const item: PlanItem = {
     id,
     kind,
+    section: definition.section,
+    wallDetailCategory: definition.wallDetailCategory,
     x: at?.x ?? defaultPoint.x,
     y: at?.y ?? defaultPoint.y,
     width,
@@ -1740,12 +1743,10 @@ function updateSelectedSurfaceColor(color: string) {
   if (selectedItem.value) selectedItem.value.color = color
 }
 
-function updateSelectedDoorOpen(open: boolean) {
-  if (selectedItem.value?.kind === 'door') selectedItem.value.doorOpen = open
-}
-
-function updateSelectedWindowOpenWings(wings: WindowOpenWings) {
-  if (selectedItem.value?.kind === 'window') selectedItem.value.windowOpenWings = wings
+function updateSelectedOpen(open: boolean) {
+  const item = selectedItem.value
+  if (!item || !getCatalogItem(item.kind).openable) return
+  item.open = open
 }
 
 function changeZoom(amount: number, anchorPoint?: Point) {
@@ -1972,10 +1973,19 @@ onMounted(() => {
   const savedPlan = window.localStorage.getItem('floorwise-plan-v1') ?? window.localStorage.getItem('roomwise-plan-v1')
   if (savedPlan) {
     try {
-      const plan = JSON.parse(savedPlan) as { items?: Array<PlanItem & { rearSide?: unknown }>; walls?: Wall[]; roomWallDimensions?: Record<string, { depth?: number; height?: number }>; measurements?: Measurement[]; roomPoints?: Point[]; rooms?: Point[][]; roomNames?: string[] }
+      const plan = JSON.parse(savedPlan) as { items?: Array<Partial<PlanItem> & Pick<PlanItem, 'id' | 'kind' | 'x' | 'y' | 'width' | 'depth' | 'height' | 'rotation'> & { rearSide?: unknown; doorOpen?: boolean; windowOpen?: boolean; windowOpenWings?: 'closed' | 'left' | 'right' | 'both' }>; walls?: Wall[]; roomWallDimensions?: Record<string, { depth?: number; height?: number }>; measurements?: Measurement[]; roomPoints?: Point[]; rooms?: Point[][]; roomNames?: string[] }
       if (Array.isArray(plan.items) && Array.isArray(plan.walls) && Array.isArray(plan.measurements)) {
-        items.value = plan.items.map(({ rearSide: _rearSide, ...item }) => {
+        items.value = plan.items.map(({ rearSide: _rearSide, doorOpen, windowOpen, windowOpenWings, ...savedItem }) => {
+          const legacyOpen = doorOpen ?? windowOpen
+            ?? (windowOpenWings === undefined ? undefined : windowOpenWings !== 'closed')
+          const item = {
+            ...savedItem,
+            kind: savedItem.kind === 'single-window' ? 'window' : savedItem.kind,
+            open: savedItem.open ?? legacyOpen,
+          } as PlanItem
           const definition = getCatalogItem(item.kind)
+          item.section = definition.section
+          item.wallDetailCategory = definition.wallDetailCategory
           item.floorOffset ??= definition.defaultFloorOffset ?? 0
           item.rotation = normalizeRotation(item.rotation)
           return definition.normalizeSavedItem?.(item) ?? item
@@ -2243,14 +2253,14 @@ watch([items, wallSegments, roomWallDimensions, measurements, roomPoints, additi
         :wall="selectedRoomWall"
         :surface-colors="selectedSurfaceColors"
         :selected-surface-color="selectedSurfaceColor"
+        :openable="selectedItemOpenable"
         :t="t"
         :item-label="itemLabel"
         @close="selectedId = null; selectedWallId = null"
         @rotate="rotateSelected"
         @rotation-change="updateSelectedRotation"
         @surface-color-change="updateSelectedSurfaceColor"
-        @door-open-change="updateSelectedDoorOpen"
-        @window-open-wings-change="updateSelectedWindowOpenWings"
+        @open-change="updateSelectedOpen"
         @wall-length-change="selectedRoomWall && updateRoomWallLength(selectedRoomWall.edge.id, $event)"
         @wall-depth-change="selectedRoomWall && updateRoomWallDimension(selectedRoomWall.edge.id, 'depth', $event)"
         @wall-height-change="selectedRoomWall && updateRoomWallDimension(selectedRoomWall.edge.id, 'height', $event)"

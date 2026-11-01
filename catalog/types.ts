@@ -2,7 +2,8 @@ import type * as THREE from 'three'
 
 export type FurnitureSide = 'top' | 'right' | 'bottom' | 'left'
 export type CatalogLanguage = 'en' | 'de'
-export type WindowOpenWings = 'closed' | 'left' | 'right' | 'both'
+export type CatalogSection = 'catalog' | 'wall-details'
+export type WallDetailCategory = 'Windows' | 'Doors'
 
 export type SvgShape = {
   tag: 'path' | 'rect' | 'line' | 'circle'
@@ -12,6 +13,8 @@ export type SvgShape = {
 export type CatalogItem = {
   id: number
   kind: string
+  section: CatalogSection
+  wallDetailCategory?: WallDetailCategory
   x: number
   y: number
   width: number
@@ -21,8 +24,7 @@ export type CatalogItem = {
   rotation: number
   name?: string
   color?: string
-  doorOpen?: boolean
-  windowOpenWings?: WindowOpenWings
+  open?: boolean
 }
 
 export type SceneItem = {
@@ -30,8 +32,7 @@ export type SceneItem = {
   depth: number
   height: number
   color: string
-  doorOpen?: boolean
-  windowOpenWings?: WindowOpenWings
+  open?: boolean
 }
 
 export type SceneBoxOptions = {
@@ -62,8 +63,8 @@ export type SceneHelpers = {
 }
 
 export type CatalogItemDefinition = {
-  section: 'catalog' | 'wall-details'
-  wallDetailCategory?: 'Windows' | 'Doors'
+  section: CatalogSection
+  wallDetailCategory?: WallDetailCategory
   label: Record<CatalogLanguage, string>
   detail: string
   dimensions: [width: number, depth: number, height: number]
@@ -73,6 +74,7 @@ export type CatalogItemDefinition = {
   planFilter?: 'url(#soft-shadow)'
   planShapes: (item: CatalogItem) => SvgShape[]
   wallMounted?: boolean
+  openable?: boolean
   mountingEdge?: 'longest' | 'second'
   defaultFloorOffset?: number
   rearSide?: (width: number, depth: number) => FurnitureSide

@@ -247,7 +247,7 @@ function addRoom() {
       const openingWidth = end - start
       const frameWidth = 0.055
       const frameDepth = wallThickness + 0.04
-      const isWindow = item.kind === 'window'
+      const isWindow = item.wallDetailCategory === 'Windows'
       const frameColor = isWindow ? '#f5f2ec' : '#986746'
       const openingHeight = top - bottom
       box(wallGroup, [frameWidth, openingHeight, frameDepth], [start, bottom + openingHeight / 2, 0], frameColor, { castShadow: false })
@@ -302,8 +302,7 @@ function addFurniture(item: RoomItem) {
     depth: item.depth / 100,
     height: item.height / 100,
     color: item.color ?? definition.color,
-    doorOpen: item.doorOpen,
-    windowOpenWings: item.windowOpenWings,
+    open: item.open,
   }, group, { box, addLegs })
   pickableObjects.push(group)
 }
@@ -623,7 +622,7 @@ function onControlsChange() {
 }
 
 watch(() => [
-  props.items.map((item) => [item.id, item.kind, item.x, item.y, item.width, item.depth, item.height, item.floorOffset, item.name, item.color, item.doorOpen, item.windowOpenWings]),
+  props.items.map((item) => [item.id, item.kind, item.section, item.wallDetailCategory, item.x, item.y, item.width, item.depth, item.height, item.floorOffset, item.name, item.color, item.open]),
   props.walls,
   props.roomWallDimensions,
   props.rooms,

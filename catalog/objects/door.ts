@@ -13,7 +13,8 @@ export const definition = {
   catalogIcon: [
     { tag: 'path', attributes: { d: 'M9 35V7h24v28M9 35h24M14 35V12h14v23m-5-12h1' } },
   ],
-  planShapes: (item) => item.doorOpen
+  openable: true,
+  planShapes: (item) => item.open
     ? [
         { tag: 'rect', attributes: { x: -item.width / 2, y: -7, width: item.width, height: 14, fill: '#fff', stroke: '#986746', 'stroke-width': 1.5 } },
         { tag: 'path', attributes: { d: `M${-item.width / 2} 0v${item.width}M${-item.width / 2} ${item.width}A${item.width} ${item.width} 0 0 0 ${item.width / 2} 0`, fill: 'none', stroke: '#986746', 'stroke-width': 1.5 } },
@@ -24,7 +25,7 @@ export const definition = {
       ],
   createScene: (item, group, { box }) => {
     const { width, depth, height, color } = item
-    if (item.doorOpen) {
+    if (item.open) {
       const leaf = new THREE.Group()
       leaf.position.x = -width / 2
       leaf.rotation.y = -Math.PI / 2

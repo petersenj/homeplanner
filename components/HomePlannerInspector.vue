@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { CatalogItem, WindowOpenWings } from '~/catalog/types'
+import type { CatalogItem } from '~/catalog/types'
 
-type PlanItem = Pick<CatalogItem, 'kind' | 'name' | 'width' | 'depth' | 'height' | 'rotation' | 'floorOffset' | 'color' | 'doorOpen' | 'windowOpenWings'>
+type PlanItem = Pick<CatalogItem, 'kind' | 'section' | 'wallDetailCategory' | 'name' | 'width' | 'depth' | 'height' | 'rotation' | 'floorOffset' | 'color' | 'open'>
 type WallInspector = { length: number; minimumLength: number; depth: number; height: number }
 
 const props = defineProps<{
@@ -9,6 +9,7 @@ const props = defineProps<{
   wall: WallInspector | null
   surfaceColors: string[]
   selectedSurfaceColor: string
+  openable: boolean
   t: (key: string) => string
   itemLabel: (kind: string) => string
 }>()
@@ -19,15 +20,14 @@ const emit = defineEmits<{
   remove: []
   rotationChange: [rotation: number]
   surfaceColorChange: [color: string]
-  doorOpenChange: [open: boolean]
-  windowOpenWingsChange: [wings: WindowOpenWings]
+  openChange: [open: boolean]
   wallLengthChange: [length: number]
   wallDepthChange: [depth: number]
   wallHeightChange: [height: number]
 }>()
 
 const activeTab = ref<'properties' | 'appearance'>('properties')
-const hasAppearance = computed(() => props.surfaceColors.length > 0 || props.item?.kind === 'door' || props.item?.kind === 'window')
+const hasAppearance = computed(() => props.surfaceColors.length > 0 || props.item?.section === 'wall-details' || props.openable)
 
 watch(hasAppearance, (available) => {
   if (!available) activeTab.value = 'properties'
@@ -107,14 +107,14 @@ function onWallDimensionChange(event: Event, dimension: 'length' | 'depth' | 'he
                 type="number"
                 min="0"
                 max="360"
-                :step="item.kind === 'door' || item.kind === 'window' ? 180 : 'any'"
+                :step="item.section === 'wall-details' ? 180 : 'any'"
                 @change="onRotationChange"
               >
               <button
                 class="rotate-button"
                 type="button"
-                :aria-label="t(item.kind === 'door' || item.kind === 'window' ? 'Rotate 180°' : 'Rotate 90°')"
-                :title="t(item.kind === 'door' || item.kind === 'window' ? 'Rotate 180°' : 'Rotate 90°')"
+                :aria-label="t(item.section === 'wall-details' ? 'Rotate 180°' : 'Rotate 90°')"
+                :title="t(item.section === 'wall-details' ? 'Rotate 180°' : 'Rotate 90°')"
                 @click="emit('rotate')"
               >↻</button>
             </div>
@@ -141,17 +141,10 @@ function onWallDimensionChange(event: Event, dimension: 'length' | 'depth' | 'he
           />
           </div>
         </template>
-        <fieldset v-if="item.kind === 'door'" class="opening-state-control">
-          <legend>{{ t('Door state') }}</legend>
-          <label><input type="radio" name="door-open-state" :checked="!item.doorOpen" @change="emit('doorOpenChange', false)">{{ t('Closed') }}</label>
-          <label><input type="radio" name="door-open-state" :checked="item.doorOpen === true" @change="emit('doorOpenChange', true)">{{ t('Open') }}</label>
-        </fieldset>
-        <fieldset v-else-if="item.kind === 'window'" class="opening-state-control">
-          <legend>{{ t('Window wings') }}</legend>
-          <label><input type="radio" name="window-open-state" :checked="(item.windowOpenWings ?? 'closed') === 'closed'" @change="emit('windowOpenWingsChange', 'closed')">{{ t('Closed') }}</label>
-          <label><input type="radio" name="window-open-state" :checked="item.windowOpenWings === 'left'" @change="emit('windowOpenWingsChange', 'left')">{{ t('Left wing open') }}</label>
-          <label><input type="radio" name="window-open-state" :checked="item.windowOpenWings === 'right'" @change="emit('windowOpenWingsChange', 'right')">{{ t('Right wing open') }}</label>
-          <label><input type="radio" name="window-open-state" :checked="item.windowOpenWings === 'both'" @change="emit('windowOpenWingsChange', 'both')">{{ t('Both wings open') }}</label>
+        <fieldset v-if="openable" class="opening-state-control">
+          <legend>{{ t('Open state') }}</legend>
+          <label><input type="radio" name="item-open-state" :checked="!item.open" @change="emit('openChange', false)">{{ t('Closed') }}</label>
+          <label><input type="radio" name="item-open-state" :checked="item.open === true" @change="emit('openChange', true)">{{ t('Open') }}</label>
         </fieldset>
       </div>
     </template>

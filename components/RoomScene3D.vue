@@ -416,7 +416,9 @@ function onCanvasClick(event: MouseEvent) {
     -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
   )
   raycaster.setFromCamera(pointer, camera)
-  const intersections = raycaster.intersectObjects(pickableObjects, true)
+  const selectableObjects = pickableObjects.filter((object) =>
+    object.userData.wallId === undefined || object.visible)
+  const intersections = raycaster.intersectObjects(selectableObjects, true)
   const taggedAncestor = (object: THREE.Object3D, key: 'wallId' | 'itemId') => {
     let current: THREE.Object3D | null = object
     while (current) {

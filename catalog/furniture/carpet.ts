@@ -9,12 +9,10 @@ export const definition = {
   catalogIcon: [
     { tag: 'rect', attributes: { x: 7, y: 6, width: 28, height: 30, rx: 3 } },
     { tag: 'rect', attributes: { x: 11, y: 10, width: 20, height: 22, rx: 2 } },
-    { tag: 'path', attributes: { d: 'm15 15 6-3 6 3v12l-6 3-6-3V15Zm0 0 6 3 6-3m-6 3v12' } },
   ],
   planShapes: (item) => [
     { tag: 'rect', attributes: { x: -item.width / 2, y: -item.depth / 2, width: item.width, height: item.depth, rx: 8, fill: item.color || '#a86f5b', stroke: '#805747', 'stroke-width': 2 } },
     { tag: 'rect', attributes: { x: -item.width / 2 + 8, y: -item.depth / 2 + 8, width: item.width - 16, height: item.depth - 16, rx: 5, fill: 'none', stroke: '#e5c7a6', 'stroke-width': 2 } },
-    { tag: 'path', attributes: { d: `M${-item.width / 2 + 22} ${-item.depth / 2 + 22}l${item.width / 2 - 22} ${item.depth / 2 - 22} ${item.width / 2 - 22} ${-item.depth / 2 + 22} ${-item.width / 2 + 22} ${item.depth / 2 - 22}Z`, fill: 'none', stroke: '#e5c7a6', 'stroke-width': 2 } },
   ],
   createScene: (item, group, { box }) => {
     const { width, depth, height, color } = item

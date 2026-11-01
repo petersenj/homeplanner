@@ -12,12 +12,10 @@ export const definition = {
   ],
   planShapes: (item) => [
     { tag: 'rect', attributes: { x: -item.width / 2, y: -item.depth / 2, width: item.width, height: item.depth, rx: 7, fill: item.color || '#94a9b8', stroke: '#6c8494', 'stroke-width': 2 } },
-    { tag: 'path', attributes: { d: `M${-item.width / 2 + 8} ${-item.depth / 2 + 8}h${item.width - 16}v${item.depth - 16}h${-item.width + 16}z`, fill: 'none', stroke: '#d7e1e7' } },
   ],
   rearSide: () => 'top',
   createScene: (item, group, { box }) => {
     const { width, depth, height, color } = item
     box(group, [width, height, depth], [0, height / 2, 0], color)
-    box(group, [width * 0.86, 0.015, depth * 0.86], [0, height + 0.01, 0], '#d0dce2', { castShadow: false })
   },
 } satisfies CatalogItemDefinition

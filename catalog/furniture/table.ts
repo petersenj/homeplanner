@@ -21,6 +21,5 @@ export const definition = {
     const topThickness = Math.max(0.055, Math.min(0.1, height * 0.12))
     addLegs(group, width, depth, Math.max(0.12, height - topThickness), color, 0.12)
     box(group, [width, topThickness, depth], [0, height - topThickness / 2, 0], color)
-    box(group, [width * 0.92, 0.025, depth * 0.88], [0, height + 0.012, 0], '#c6a47e')
   },
 } satisfies CatalogItemDefinition

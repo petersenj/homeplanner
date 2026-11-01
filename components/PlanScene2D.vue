@@ -1,24 +1,9 @@
 <script setup lang="ts">
 import { getCatalogItem } from '~/catalog'
+import type { CatalogItem } from '~/catalog/types'
+import type { DragMeasurement, LiveMeasurement, Measurement, Point, RoomEdge, Wall } from '~/types/planner'
 
-type Point = { x: number; y: number }
-type PlanItem = {
-  id: number
-  kind: string
-  x: number
-  y: number
-  width: number
-  depth: number
-  height: number
-  floorOffset?: number
-  rotation: number
-  name?: string
-  color?: string
-}
-type Measurement = { id: number; start: Point; end: Point }
-type RoomEdge = { id: string; start: Point; end: Point }
-type DragMeasurement = { id: string; start: Point; end: Point; label: Point; text: string }
-type LiveMeasurement = { start: Point; end: Point; label: Point; text: string }
+type PlanItem = CatalogItem
 
 const props = defineProps<{
   viewBox: string
@@ -37,7 +22,7 @@ const props = defineProps<{
   roomNames: string[]
   roomDisplayName: (name: string | undefined, index: number) => string
   roomAreaFor: (points: Point[]) => number
-  wallSegments: Array<{ id: number; start: Point; end: Point }>
+  wallSegments: Wall[]
   showCustomMeasurements: boolean
   measurements: Measurement[]
   fixedSizeLabelTransform: (point: Point, rotation?: number) => string

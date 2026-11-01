@@ -1,13 +1,7 @@
 <script setup lang="ts">
-type PlanItem = {
-  kind: string
-  name?: string
-  width: number
-  depth: number
-  height: number
-  rotation: number
-  floorOffset?: number
-}
+import type { CatalogItem } from '~/catalog/types'
+
+type PlanItem = Pick<CatalogItem, 'kind' | 'name' | 'width' | 'depth' | 'height' | 'rotation' | 'floorOffset'>
 
 defineProps<{
   item: PlanItem

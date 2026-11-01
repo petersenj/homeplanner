@@ -3,23 +3,11 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { getCatalogItem } from '~/catalog'
 import { addLegs, box } from '~/catalog/scene'
+import type { CatalogItem } from '~/catalog/types'
+import type { CameraSnapshot, CameraVector, Point, Wall } from '~/types/planner'
 const { language, t } = useAppLanguage()
 
-type RoomItem = {
-  id: number
-  kind: string
-  x: number
-  y: number
-  width: number
-  depth: number
-  height: number
-  floorOffset?: number
-  rotation: number
-  name?: string
-  color?: string
-}
-type Wall = { id: number; start: { x: number; y: number }; end: { x: number; y: number } }
-type Point = { x: number; y: number }
+type RoomItem = CatalogItem
 
 const props = defineProps<{
   items: RoomItem[]
@@ -30,8 +18,12 @@ const props = defineProps<{
   roomX: number
   roomY: number
   selectedId: number | null
+  cameraSnapshot: CameraSnapshot | null
 }>()
-const emit = defineEmits<{ select: [id: number | null] }>()
+const emit = defineEmits<{
+  select: [id: number | null]
+  cameraChange: [snapshot: CameraSnapshot]
+}>()
 const host = ref<HTMLDivElement | null>(null)
 const canvas = ref<HTMLCanvasElement | null>(null)
 const isReady = ref(false)
@@ -449,11 +441,27 @@ function positionCamera() {
   controls.update()
 }
 
-function animateCameraTo(topDown: boolean) {
+function snapshotVector(vector: THREE.Vector3): CameraVector {
+  return { x: vector.x, y: vector.y, z: vector.z }
+}
+
+function emitCameraSnapshot() {
   if (!camera || !controls) return
-  const destination = cameraView(topDown)
-  if (!destination) return
-  if (topDown) showCameraFacingWalls.value = true
+  emit('cameraChange', {
+    position: snapshotVector(camera.position),
+    target: snapshotVector(controls.target),
+    up: snapshotVector(camera.up),
+    isTopDown: isTopDownView.value,
+    showCameraFacingWalls: showCameraFacingWalls.value,
+  })
+}
+
+function transitionCameraTo(
+  destination: { target: THREE.Vector3; up: THREE.Vector3; position: THREE.Vector3; maxDistance: number },
+  topDown: boolean,
+  showFacingWalls: boolean,
+) {
+  if (!camera || !controls) return
 
   const endQuaternion = new THREE.Quaternion()
   const previousUp = camera.up.clone()
@@ -481,7 +489,29 @@ function animateCameraTo(topDown: boolean) {
   controls.maxDistance = destination.maxDistance
   controls.maxPolarAngle = topDown ? Math.PI / 2 : Math.PI * 0.485
   isTopDownView.value = topDown
-  showCameraFacingWalls.value = topDown
+  showCameraFacingWalls.value = showFacingWalls
+}
+
+function animateCameraTo(topDown: boolean) {
+  const destination = cameraView(topDown)
+  if (destination) transitionCameraTo(destination, topDown, topDown)
+}
+
+function animateCameraToSnapshot(snapshot: CameraSnapshot) {
+  const target = new THREE.Vector3(snapshot.target.x, snapshot.target.y, snapshot.target.z)
+  const position = new THREE.Vector3(snapshot.position.x, snapshot.position.y, snapshot.position.z)
+  const up = new THREE.Vector3(snapshot.up.x, snapshot.up.y, snapshot.up.z)
+  transitionCameraTo({
+    target,
+    position,
+    up,
+    maxDistance: Math.max(16, position.distanceTo(target) * 1.5),
+  }, snapshot.isTopDown, snapshot.showCameraFacingWalls)
+}
+
+function toggleCameraFacingWalls() {
+  showCameraFacingWalls.value = !showCameraFacingWalls.value
+  emitCameraSnapshot()
 }
 
 function toggleTopDownView() {
@@ -518,6 +548,11 @@ function onControlsStart() {
     if (controls) controls.maxPolarAngle = Math.PI * 0.485
   }
   emit('select', null)
+  emitCameraSnapshot()
+}
+
+function onControlsChange() {
+  emitCameraSnapshot()
 }
 
 watch(() => [
@@ -578,12 +613,27 @@ onMounted(() => {
     resize()
     resizeObserver = new ResizeObserver(resize)
     resizeObserver.observe(host.value)
-    controls.addEventListener('start', onControlsStart)
     positionCamera()
+    controls.addEventListener('start', onControlsStart)
+    controls.addEventListener('change', onControlsChange)
     canvas.value.addEventListener('click', onCanvasClick)
     isReady.value = true
     animationFrame = window.requestAnimationFrame(render)
-    window.requestAnimationFrame(() => animateCameraTo(false))
+    if (props.cameraSnapshot) {
+      window.requestAnimationFrame(() => animateCameraToSnapshot(props.cameraSnapshot!))
+    } else {
+      const defaultView = cameraView(false)
+      if (defaultView) {
+        emit('cameraChange', {
+          position: snapshotVector(defaultView.position),
+          target: snapshotVector(defaultView.target),
+          up: snapshotVector(defaultView.up),
+          isTopDown: false,
+          showCameraFacingWalls: false,
+        })
+      }
+      window.requestAnimationFrame(() => animateCameraTo(false))
+    }
   } catch (error) {
     sceneError.value = 'Your browser could not start the interactive 3D view. Try updating your browser or enabling hardware acceleration.'
     console.error('Could not initialize the interactive 3D room.', error)
@@ -592,6 +642,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  emitCameraSnapshot()
   document.removeEventListener('fullscreenchange', onFullscreenChange)
   window.cancelAnimationFrame(animationFrame)
   resizeObserver?.disconnect()
@@ -618,7 +669,7 @@ onBeforeUnmount(() => {
       class="scene-walls-toggle"
       type="button"
       :aria-pressed="showCameraFacingWalls"
-      @click="showCameraFacingWalls = !showCameraFacingWalls"
+      @click="toggleCameraFacingWalls"
     >
       {{ t(showCameraFacingWalls ? 'Hide camera-facing walls' : 'Show camera-facing walls') }}
     </button>

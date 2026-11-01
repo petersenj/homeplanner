@@ -1,32 +1,16 @@
 <script setup lang="ts">
 import { defineAsyncComponent } from 'vue'
 import { getCatalogItem } from '~/catalog'
-import type { FurnitureSide } from '~/catalog/types'
+import type { CatalogItem, FurnitureSide } from '~/catalog/types'
+import type { CameraSnapshot, DragMeasurement, Measurement, Point, RoomEdge, Wall } from '~/types/planner'
 
 const RoomScene3D = defineAsyncComponent(() => import('~/components/RoomScene3D.vue'))
 const PlanScene2D = defineAsyncComponent(() => import('~/components/PlanScene2D.vue'))
 const { language, setLanguage, t } = useAppLanguage()
 
-type Point = { x: number; y: number }
 type RoomCornerDrag = { corner: Point; pointerStart: Point; rooms: Point[][] }
 type FurnitureKind = string
-type PlanItem = {
-  id: number
-  kind: FurnitureKind
-  x: number
-  y: number
-  width: number
-  depth: number
-  height: number
-  floorOffset?: number
-  rotation: number
-  name?: string
-  color?: string
-}
-type Wall = { id: number; start: Point; end: Point }
-type Measurement = { id: number; start: Point; end: Point }
-type RoomEdge = { id: string; start: Point; end: Point; label: Point; labelAngle: number; length: number; orientations: number[] }
-type DragMeasurement = { id: string; start: Point; end: Point; label: Point; text: string }
+type PlanItem = CatalogItem
 
 const SCALE = 100
 const VIEW_WIDTH = 1280
@@ -43,6 +27,7 @@ const defaultRoomPoints: Point[] = [
   { x: 125, y: 575 },
 ]
 const view = ref<'2d' | '3d'>('2d')
+const cameraSnapshot = ref<CameraSnapshot | null>(null)
 const activeTool = ref<'select' | 'room' | 'addRoom' | 'measure' | 'window' | 'door' | 'cube' | 'furniture'>('select')
 const selectedId = ref<number | null>(null)
 const pendingPoint = ref<Point | null>(null)
@@ -1824,7 +1809,9 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
               :room-x="roomBounds.x"
               :room-y="roomBounds.y"
               :selected-id="selectedId"
+              :camera-snapshot="cameraSnapshot"
               @select="selectedId = $event"
+              @camera-change="cameraSnapshot = $event"
             />
           </ClientOnly>
           <div v-if="activeTool === 'room' || activeTool === 'addRoom'" class="room-draw-banner">

@@ -141,11 +141,16 @@ function onWallDimensionChange(event: Event, dimension: 'length' | 'depth' | 'he
           />
           </div>
         </template>
-        <fieldset v-if="openable" class="opening-state-control">
-          <legend>{{ t('Open state') }}</legend>
-          <label><input type="radio" name="item-open-state" :checked="!item.open" @change="emit('openChange', false)">{{ t('Closed') }}</label>
-          <label><input type="radio" name="item-open-state" :checked="item.open === true" @change="emit('openChange', true)">{{ t('Open') }}</label>
-        </fieldset>
+        <div v-if="openable" class="opening-state-control">
+          <span class="opening-state-label">{{ t('Open state') }}</span>
+          <AppSwitch
+            :model-value="item.open === true"
+            :label="t('Open state')"
+            :checked-text="t('Open')"
+            :unchecked-text="t('Closed')"
+            @update:model-value="emit('openChange', $event)"
+          />
+        </div>
       </div>
     </template>
   </aside>
@@ -239,28 +244,11 @@ function onWallDimensionChange(event: Event, dimension: 'length' | 'depth' | 'he
 .opening-state-control {
   display: grid;
   gap: 8px;
-  margin: 0;
-  padding: 0;
-  border: 0;
+}
 
-  legend {
-    margin-bottom: 10px;
-    color: #777a72;
-    font: 600 11px 'Manrope', sans-serif;
-  }
-
-  label {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    color: #41443e;
-    font: 500 11px 'Manrope', sans-serif;
-    cursor: pointer;
-  }
-
-  input {
-    accent-color: #668774;
-  }
+.opening-state-label {
+  color: #777a72;
+  font: 600 11px 'Manrope', sans-serif;
 }
 
 .surface-swatches {

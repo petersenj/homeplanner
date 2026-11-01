@@ -141,7 +141,9 @@
     "Right wing open": "Rechter Flügel offen",
     "Both wings open": "Beide Flügel offen",
     "Distance from floor": "Abstand zum Boden",
-    "Rotate 90°": "Um 90° drehen"
+    "Rotate 90°": "Um 90° drehen",
+    "Rotate 180°": "Um 180° drehen",
+    "This opening cannot fit on a wall without overlapping another opening.": "Diese Öffnung passt nicht an die Wand, ohne eine andere Öffnung zu überlappen."
   },
   "dialog": {
     "NEW FLOORPLAN": "NEUER GRUNDRISS",

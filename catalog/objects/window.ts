@@ -22,12 +22,12 @@ export const definition = {
     const halfWidth = item.width / 2
     if (openWings === 'left' || openWings === 'both') {
       shapes.push(
-        { tag: 'path', attributes: { d: `M${-halfWidth} 0v${halfWidth}M${-halfWidth} ${halfWidth}A${halfWidth} ${halfWidth} 0 0 1 0 0`, fill: 'none', stroke: '#3f8e98', 'stroke-width': 1.5 } },
+        { tag: 'path', attributes: { d: `M${-halfWidth} 0v${halfWidth}M${-halfWidth} ${halfWidth}A${halfWidth} ${halfWidth} 0 0 0 0 0`, fill: 'none', stroke: '#3f8e98', 'stroke-width': 1.5 } },
       )
     }
     if (openWings === 'right' || openWings === 'both') {
       shapes.push(
-        { tag: 'path', attributes: { d: `M${halfWidth} 0v${halfWidth}M${halfWidth} ${halfWidth}A${halfWidth} ${halfWidth} 0 0 0 0 0`, fill: 'none', stroke: '#3f8e98', 'stroke-width': 1.5 } },
+        { tag: 'path', attributes: { d: `M${halfWidth} 0v${halfWidth}M${halfWidth} ${halfWidth}A${halfWidth} ${halfWidth} 0 0 1 0 0`, fill: 'none', stroke: '#3f8e98', 'stroke-width': 1.5 } },
       )
     }
     return shapes

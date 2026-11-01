@@ -2,7 +2,7 @@
 import type { CatalogItem, WindowOpenWings } from '~/catalog/types'
 
 type PlanItem = Pick<CatalogItem, 'kind' | 'name' | 'width' | 'depth' | 'height' | 'rotation' | 'floorOffset' | 'color' | 'doorOpen' | 'windowOpenWings'>
-type WallInspector = { length: number; depth: number; height: number }
+type WallInspector = { length: number; minimumLength: number; depth: number; height: number }
 
 const props = defineProps<{
   item: PlanItem | null
@@ -43,6 +43,10 @@ function onWallDimensionChange(event: Event, dimension: 'length' | 'depth' | 'he
   if (!(event.target instanceof HTMLInputElement)) return
   const value = Number(event.target.value)
   if (!Number.isFinite(value) || value < 1) return
+  if (dimension === 'length' && props.wall && value < props.wall.minimumLength) {
+    event.target.value = props.wall.length.toFixed(2)
+    return
+  }
   if (dimension === 'length') emit('wallLengthChange', value)
   else if (dimension === 'depth') emit('wallDepthChange', value)
   else emit('wallHeightChange', value)
@@ -59,7 +63,7 @@ function onWallDimensionChange(event: Event, dimension: 'length' | 'depth' | 'he
     </div>
     <template v-if="wall">
       <label class="property-label">{{ t('Length') }} <span>cm</span><input
-          :value="wall.length.toFixed(2)" type="number" min="1" step="any"
+          :value="wall.length.toFixed(2)" type="number" :min="wall.minimumLength" step="any"
           @change="onWallDimensionChange($event, 'length')"></label>
       <label class="property-label">{{ t('Depth') }} <span>cm</span><input
           :value="wall.depth" type="number" min="1" step="any"
@@ -103,14 +107,14 @@ function onWallDimensionChange(event: Event, dimension: 'length' | 'depth' | 'he
                 type="number"
                 min="0"
                 max="360"
-                step="any"
+                :step="item.kind === 'door' || item.kind === 'window' ? 180 : 'any'"
                 @change="onRotationChange"
               >
               <button
                 class="rotate-button"
                 type="button"
-                :aria-label="t('Rotate 90°')"
-                :title="t('Rotate 90°')"
+                :aria-label="t(item.kind === 'door' || item.kind === 'window' ? 'Rotate 180°' : 'Rotate 90°')"
+                :title="t(item.kind === 'door' || item.kind === 'window' ? 'Rotate 180°' : 'Rotate 90°')"
                 @click="emit('rotate')"
               >↻</button>
             </div>

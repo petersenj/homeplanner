@@ -15,8 +15,10 @@ type WallMountedAnchor = {
   end: Point
   parameter: number
   normalOffset: number
+  rotationOffset: number
 }
 type CornerMove = { from: Point; to: Point }
+type WallMountedAnchorUpdate = { itemId: number; point: Point; rotation: number }
 type RoomCornerDrag = { corner: Point; pointerStart: Point; rooms: Point[][]; anchors: WallMountedAnchor[]; lockedAxis: DragAxis | null }
 type RoomWallDrag = { wall: RoomEdge; pointerStart: Point; rooms: Point[][]; anchors: WallMountedAnchor[]; lockedAxis: DragAxis | null }
 type FurnitureKind = string
@@ -51,7 +53,7 @@ const drawingCursor = ref<Point | null>(null)
 const drawingCursorClosesRoom = ref(false)
 const drawingCursorSnapsToWall = ref(false)
 const roomDrawingError = ref('')
-const roomCornerError = ref('')
+const canvasActionError = ref('')
 const roomCornerDrag = ref<RoomCornerDrag | null>(null)
 const roomWallDrag = ref<RoomWallDrag | null>(null)
 const activeConfirmation = ref<'new-floorplan' | 'reset-plan' | null>(null)
@@ -105,9 +107,20 @@ const selectedRoomWall = computed(() => {
   const edge = roomEdges.value.find((roomEdge) => roomEdge.id === selectedWallId.value)
   if (!edge) return null
   const dimensions = roomWallDimensions.value[edge.id]
+  const edgeLength = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y)
+  const minimumLength = items.value.reduce((minimum, item) => {
+    if (!isWallOpening(item)) return minimum
+    const projected = projectPointToSegment({ x: item.x, y: item.y }, edge.start, edge.end)
+    if (Math.hypot(projected.x - item.x, projected.y - item.y) > 10) return minimum
+    const rotation = item.rotation * Math.PI / 180
+    const tangent = { x: (edge.end.x - edge.start.x) / edgeLength, y: (edge.end.y - edge.start.y) / edgeLength }
+    if (Math.abs(Math.cos(rotation) * tangent.x + Math.sin(rotation) * tangent.y) < 0.999) return minimum
+    return Math.max(minimum, item.width)
+  }, 1)
   return {
     edge,
     length: edge.length * SCALE,
+    minimumLength,
     depth: dimensions?.depth ?? WALL_THICKNESS,
     height: dimensions?.height ?? 265,
   }
@@ -545,6 +558,76 @@ function normalizeRotation(rotation: number) {
   return ((rotation % 360) + 360) % 360
 }
 
+function isWallOpening(item: PlanItem) {
+  return item.kind === 'door' || item.kind === 'window'
+}
+
+function wallMountedRotationOffset(rotation: number, edge: Pick<RoomEdge, 'start' | 'end'>) {
+  const edgeRotation = Math.atan2(edge.end.y - edge.start.y, edge.end.x - edge.start.x) * 180 / Math.PI
+  const difference = normalizeRotation(rotation - edgeRotation)
+  return difference >= 90 && difference < 270 ? 180 : 0
+}
+
+function wallMountedRotation(edge: Pick<RoomEdge, 'start' | 'end'>, offset: number) {
+  return normalizeRotation(Math.atan2(edge.end.y - edge.start.y, edge.end.x - edge.start.x) * 180 / Math.PI + offset)
+}
+
+function wallMountedOpeningLayoutIsValid(
+  rooms: Point[][],
+  positionUpdates: WallMountedAnchorUpdate[] = [],
+  candidateItems: PlanItem[] = items.value,
+) {
+  const wallEdges = rooms.flatMap((room) => room.map((start, index) => ({
+    start,
+    end: room[(index + 1) % room.length]!,
+  })))
+  const updatedPositions = new Map(positionUpdates.map((update) => [update.itemId, update.point]))
+  type PlacedOpening = { item: PlanItem; point: Point; tangent: Point }
+  const openings: Array<PlacedOpening | false | null> = candidateItems
+    .filter(isWallOpening)
+    .map((item) => {
+      const point = updatedPositions.get(item.id) ?? { x: item.x, y: item.y }
+      let nearest: { start: Point; end: Point; projected: Point; distance: number } | null = null
+      for (const edge of wallEdges) {
+        const projected = projectPointToSegment(point, edge.start, edge.end)
+        const distance = Math.hypot(projected.x - point.x, projected.y - point.y)
+        if (!nearest || distance < nearest.distance) nearest = { ...edge, projected, distance }
+      }
+      if (!nearest || nearest.distance > 20) return null
+      const dx = nearest.end.x - nearest.start.x
+      const dy = nearest.end.y - nearest.start.y
+      const length = Math.hypot(dx, dy)
+      const along = ((nearest.projected.x - nearest.start.x) * dx + (nearest.projected.y - nearest.start.y) * dy) / (length || 1)
+      if (along < item.width / 2 - 0.1 || length - along < item.width / 2 - 0.1) return false
+      return {
+        item,
+        point,
+        tangent: { x: dx / (length || 1), y: dy / (length || 1) },
+      }
+    })
+
+  if (openings.some((opening) => opening === false)) return false
+  const placedOpenings = openings.filter((opening): opening is PlacedOpening => opening !== null && opening !== false)
+  for (let firstIndex = 0; firstIndex < placedOpenings.length; firstIndex++) {
+    const first = placedOpenings[firstIndex]!
+    for (const second of placedOpenings.slice(firstIndex + 1)) {
+      const parallel = Math.abs(first.tangent.x * second.tangent.x + first.tangent.y * second.tangent.y)
+      if (parallel < 0.999) continue
+      const lateralDistance = Math.abs(
+        (second.point.x - first.point.x) * -first.tangent.y
+        + (second.point.y - first.point.y) * first.tangent.x,
+      )
+      if (lateralDistance > 10) continue
+      const alongDistance = Math.abs(
+        (second.point.x - first.point.x) * first.tangent.x
+        + (second.point.y - first.point.y) * first.tangent.y,
+      )
+      if (alongDistance < (first.item.width + second.item.width) / 2 - 0.1) return false
+    }
+  }
+  return true
+}
+
 function defaultRearSide(kind: FurnitureKind, width: number, depth: number): FurnitureSide {
   return getCatalogItem(kind).rearSide?.(width, depth) ?? 'top'
 }
@@ -842,20 +925,20 @@ function removeRoomCorner(corner: Point) {
       (samePoint(segment.start, other.start) && samePoint(segment.end, other.end))
       || (samePoint(segment.start, other.end) && samePoint(segment.end, other.start))))
   if (uniqueConnectedSegments.length >= 3) {
-    roomCornerError.value = 'Corners where three or more wall segments meet cannot be removed.'
+    canvasActionError.value = 'Corners where three or more wall segments meet cannot be removed.'
     return
   }
   const rooms = currentRooms
     .map((room) => room.filter((point) => !samePoint(point, corner)))
   if (rooms.some((room) => room.length < 3)) {
-    roomCornerError.value = 'A room must have at least three corners.'
+    canvasActionError.value = 'A room must have at least three corners.'
     return
   }
   if (!isValidRoomLayout(rooms)) {
-    roomCornerError.value = 'This corner cannot be removed because it would make the room layout invalid.'
+    canvasActionError.value = 'This corner cannot be removed because it would make the room layout invalid.'
     return
   }
-  roomCornerError.value = ''
+  canvasActionError.value = ''
   roomPoints.value = rooms[0]!
   additionalRoomPoints.value = rooms.slice(1)
 }
@@ -895,9 +978,15 @@ function addItem(kind: FurnitureKind, at?: Point) {
   const longestEdge = roomEdges.value.reduce((longest, edge) => edge.length > longest.length ? edge : longest, roomEdges.value[0]!)
   const definition = getCatalogItem(kind)
   const mountingEdge = definition.mountingEdge === 'second' ? roomEdges.value[1] ?? longestEdge : longestEdge
-  const edgeAngle = Math.atan2(mountingEdge.end.y - mountingEdge.start.y, mountingEdge.end.x - mountingEdge.start.x) * 180 / Math.PI
+  const targetEdge = definition.wallMounted && at ? nearestRoomEdge(at) : mountingEdge
+  const wallPosition = definition.wallMounted
+    ? projectOnEdge(at ?? {
+        x: (targetEdge.start.x + targetEdge.end.x) / 2,
+        y: (targetEdge.start.y + targetEdge.end.y) / 2,
+      }, targetEdge, width / 2).point
+    : null
   const defaultPoint = definition.wallMounted
-    ? { x: (mountingEdge.start.x + mountingEdge.end.x) / 2, y: (mountingEdge.start.y + mountingEdge.end.y) / 2 }
+    ? wallPosition!
     : roomCenter.value
   const item: PlanItem = {
     id,
@@ -908,10 +997,15 @@ function addItem(kind: FurnitureKind, at?: Point) {
     depth,
     height,
     floorOffset: definition.defaultFloorOffset ?? 0,
-    rotation: definition.wallMounted ? normalizeRotation(edgeAngle) : 0,
+    rotation: definition.wallMounted ? wallMountedRotation(targetEdge, 0) : 0,
     ...(definition.surfaceColors ? { color: definition.color } : {}),
   }
+  if (definition.wallMounted && !wallMountedOpeningLayoutIsValid(allRooms.value, [], [...items.value, item])) {
+    canvasActionError.value = 'This opening cannot fit on a wall without overlapping another opening.'
+    return
+  }
   items.value.push(item)
+  canvasActionError.value = ''
   selectedWallId.value = null
   selectedId.value = id
   activeTool.value = 'select'
@@ -1154,11 +1248,13 @@ function captureWallMountedAnchors(): WallMountedAnchor[] {
       end: { ...nearest.edge.end },
       parameter: edgeParameter(nearest.projected, nearest.edge.start, nearest.edge.end),
       normalOffset: ((item.x - nearest.projected.x) * -dy + (item.y - nearest.projected.y) * dx) / length,
+      rotationOffset: wallMountedRotationOffset(item.rotation, nearest.edge),
     }]
   })
 }
 
-function updateWallMountedAnchors(anchors: WallMountedAnchor[], movedCorners: CornerMove[]) {
+function getWallMountedAnchorUpdates(anchors: WallMountedAnchor[], movedCorners: CornerMove[]) {
+  const updates: WallMountedAnchorUpdate[] = []
   for (const anchor of anchors) {
     const startMove = movedCorners.find((move) => samePoint(move.from, anchor.start))
     const endMove = movedCorners.find((move) => samePoint(move.from, anchor.end))
@@ -1173,9 +1269,25 @@ function updateWallMountedAnchors(anchors: WallMountedAnchor[], movedCorners: Co
     if (!item) continue
     const minimumParameter = Math.min(item.width / (2 * length), 0.5)
     const parameter = Math.max(minimumParameter, Math.min(1 - minimumParameter, anchor.parameter))
-    item.x = start.x + dx * parameter - dy / length * anchor.normalOffset
-    item.y = start.y + dy * parameter + dx / length * anchor.normalOffset
-    item.rotation = normalizeRotation(Math.atan2(dy, dx) * 180 / Math.PI)
+    updates.push({
+      itemId: item.id,
+      point: {
+        x: start.x + dx * parameter - dy / length * anchor.normalOffset,
+        y: start.y + dy * parameter + dx / length * anchor.normalOffset,
+      },
+      rotation: wallMountedRotation({ start, end }, anchor.rotationOffset),
+    })
+  }
+  return updates
+}
+
+function applyWallMountedAnchorUpdates(updates: WallMountedAnchorUpdate[]) {
+  for (const update of updates) {
+    const item = items.value.find((entry) => entry.id === update.itemId)
+    if (!item) continue
+    item.x = update.point.x
+    item.y = update.point.y
+    item.rotation = update.rotation
   }
 }
 
@@ -1217,12 +1329,15 @@ function moveRoomWall(
     return point
   }))
   if (!isValidRoomLayout(rooms)) return false
-  roomPoints.value = rooms[0]!
-  additionalRoomPoints.value = rooms.slice(1)
-  updateWallMountedAnchors(anchors, [
+  const movedCorners = [
     { from: edge.start, to: { x: edge.start.x + dx, y: edge.start.y + dy } },
     { from: edge.end, to: { x: edge.end.x + dx, y: edge.end.y + dy } },
-  ])
+  ]
+  const anchorUpdates = getWallMountedAnchorUpdates(anchors, movedCorners)
+  if (!wallMountedOpeningLayoutIsValid(rooms, anchorUpdates)) return false
+  roomPoints.value = rooms[0]!
+  additionalRoomPoints.value = rooms.slice(1)
+  applyWallMountedAnchorUpdates(anchorUpdates)
   return true
 }
 
@@ -1265,8 +1380,21 @@ function updateRoomWallLength(id: string, length: number) {
     return point
   }))
   if (!isValidRoomLayout(rooms)) return
+  const movedCorners = [
+    {
+      from: edge.start,
+      to: { x: edge.start.x - direction.x * delta / 2, y: edge.start.y - direction.y * delta / 2 },
+    },
+    {
+      from: edge.end,
+      to: { x: edge.end.x + direction.x * delta / 2, y: edge.end.y + direction.y * delta / 2 },
+    },
+  ]
+  const anchorUpdates = getWallMountedAnchorUpdates(captureWallMountedAnchors(), movedCorners)
+  if (!wallMountedOpeningLayoutIsValid(rooms, anchorUpdates)) return
   roomPoints.value = rooms[0]!
   additionalRoomPoints.value = rooms.slice(1)
+  applyWallMountedAnchorUpdates(anchorUpdates)
 }
 
 function updateRoomWallDimension(id: string, dimension: 'depth' | 'height', value: number) {
@@ -1377,9 +1505,11 @@ function onCanvasPointerMove(event: PointerEvent) {
       return updated
     })
     if (isValidRoomLayout(rooms)) {
+      const anchorUpdates = getWallMountedAnchorUpdates(drag.anchors, [{ from: drag.corner, to: corner }])
+      if (!wallMountedOpeningLayoutIsValid(rooms, anchorUpdates)) return
       roomPoints.value = rooms[0]!
       additionalRoomPoints.value = rooms.slice(1)
-      updateWallMountedAnchors(drag.anchors, [{ from: drag.corner, to: corner }])
+      applyWallMountedAnchorUpdates(anchorUpdates)
     }
     return
   }
@@ -1411,9 +1541,13 @@ function onCanvasPointerMove(event: PointerEvent) {
   if (getCatalogItem(item.kind).wallMounted) {
     const edge = nearestRoomEdge(point)
     const projected = projectOnEdge(point, edge, item.width / 2)
+    const previousEdge = nearestRoomEdge({ x: item.x, y: item.y })
+    const rotationOffset = wallMountedRotationOffset(item.rotation, previousEdge)
+    const positionUpdate = { itemId: item.id, point: projected.point, rotation: wallMountedRotation(edge, rotationOffset) }
+    if (!wallMountedOpeningLayoutIsValid(allRooms.value, [positionUpdate])) return
     item.x = projected.point.x
     item.y = projected.point.y
-    item.rotation = normalizeRotation(Math.atan2(edge.end.y - edge.start.y, edge.end.x - edge.start.x) * 180 / Math.PI)
+    item.rotation = positionUpdate.rotation
   } else {
     const snapped = snapFurnitureToWall(point, item)
     if (snapped) {
@@ -1587,11 +1721,19 @@ function removeMeasurement(id: number) {
 }
 
 function rotateSelected() {
-  if (selectedItem.value) selectedItem.value.rotation = normalizeRotation(selectedItem.value.rotation + 90)
+  if (!selectedItem.value) return
+  selectedItem.value.rotation = normalizeRotation(selectedItem.value.rotation + (isWallOpening(selectedItem.value) ? 180 : 90))
 }
 
 function updateSelectedRotation(rotation: number) {
-  if (selectedItem.value) selectedItem.value.rotation = normalizeRotation(rotation)
+  const item = selectedItem.value
+  if (!item) return
+  if (isWallOpening(item)) {
+    const edge = nearestRoomEdge({ x: item.x, y: item.y })
+    item.rotation = wallMountedRotation(edge, wallMountedRotationOffset(rotation, edge))
+    return
+  }
+  item.rotation = normalizeRotation(rotation)
 }
 
 function updateSelectedSurfaceColor(color: string) {
@@ -1767,9 +1909,14 @@ function moveSelectedItemWithKeys(timestamp: number) {
       if (getCatalogItem(item.kind).wallMounted) {
         const edge = nearestRoomEdge(target)
         const projected = projectOnEdge(target, edge, item.width / 2)
-        item.x = projected.point.x
-        item.y = projected.point.y
-        item.rotation = normalizeRotation(Math.atan2(edge.end.y - edge.start.y, edge.end.x - edge.start.x) * 180 / Math.PI)
+        const previousEdge = nearestRoomEdge({ x: item.x, y: item.y })
+        const rotationOffset = wallMountedRotationOffset(item.rotation, previousEdge)
+        const positionUpdate = { itemId: item.id, point: projected.point, rotation: wallMountedRotation(edge, rotationOffset) }
+        if (wallMountedOpeningLayoutIsValid(allRooms.value, [positionUpdate])) {
+          item.x = projected.point.x
+          item.y = projected.point.y
+          item.rotation = positionUpdate.rotation
+        }
       } else if (isFurniturePlacementValid(target, item)) {
         item.x = target.x
         item.y = target.y
@@ -2088,7 +2235,7 @@ watch([items, wallSegments, roomWallDimensions, measurements, roomPoints, additi
             <div class="canvas-scale"><span class="scale-line" :style="{ width: `${scaleBar.width}px` }"></span><span>{{ scaleBar.label }}</span></div>
           </template>
         </div>
-        <div class="canvas-footer"><span v-if="roomCornerError" role="status">{{ t(roomCornerError) }}</span><span v-else-if="view === '2d'">{{ t('Drag walls or corners · click walls to select · choose Add room to add wall corners · right-click corners to remove · right-drag to pan · scroll to zoom') }}</span><span v-else>{{ t('Drag to orbit · right-drag to pan · scroll to zoom · select a wall or object and use arrow keys to move it') }}</span><span class="footer-separator">·</span><span>{{ placedCount }} {{ t('objects') }}</span><span class="footer-separator">·</span><span>{{ totalArea }} m² {{ t('floor area') }}</span><span class="footer-spacer"></span><button @click="clearPlan">{{ t('Reset plan') }}</button></div>
+        <div class="canvas-footer"><span v-if="canvasActionError" role="status">{{ t(canvasActionError) }}</span><span v-else-if="view === '2d'">{{ t('Drag walls or corners · click walls to select · choose Add room to add wall corners · right-click corners to remove · right-drag to pan · scroll to zoom') }}</span><span v-else>{{ t('Drag to orbit · right-drag to pan · scroll to zoom · select a wall or object and use arrow keys to move it') }}</span><span class="footer-separator">·</span><span>{{ placedCount }} {{ t('objects') }}</span><span class="footer-separator">·</span><span>{{ totalArea }} m² {{ t('floor area') }}</span><span class="footer-spacer"></span><button @click="clearPlan">{{ t('Reset plan') }}</button></div>
       </div>
       <HomePlannerInspector
         v-if="selectedItem || selectedRoomWall"

@@ -19,7 +19,14 @@ const emit = defineEmits<{
   close: []
   rotate: []
   remove: []
+  rotationChange: [rotation: number]
 }>()
+
+function onRotationChange(event: Event) {
+  if (!(event.target instanceof HTMLInputElement)) return
+  const rotation = Number(event.target.value)
+  if (Number.isFinite(rotation)) emit('rotationChange', rotation)
+}
 </script>
 
 <template>
@@ -34,11 +41,29 @@ const emit = defineEmits<{
           v-model.number="item.width" type="number" min="1"></label><label class="property-label">{{ t('Depth') }}
         <span>cm</span><input v-model.number="item.depth" type="number" min="1"></label></div>
     <div class="property-row"><label class="property-label">{{ t('Height') }} <span>cm</span><input
-          v-model.number="item.height" type="number" min="1"></label><label class="property-label">{{ t('Rotation') }}
-        <span>°</span><input :value="item.rotation" type="number" readonly></label></div>
+          v-model.number="item.height" type="number" min="1"></label><label class="property-label rotation-property-label">{{ t('Rotation') }}
+        <span>°</span>
+        <div class="rotation-controls">
+          <input
+            :value="item.rotation"
+            :aria-label="t('Rotation')"
+            type="number"
+            min="0"
+            max="360"
+            step="any"
+            @change="onRotationChange"
+          >
+          <button
+            class="rotate-button"
+            type="button"
+            :aria-label="t('Rotate 90°')"
+            :title="t('Rotate 90°')"
+            @click="emit('rotate')"
+          >↻</button>
+        </div>
+      </label></div>
     <label class="property-label">{{ t('Distance from floor') }} <span>cm</span><input v-model.number="item.floorOffset"
         type="number" min="0" step="1"></label>
-    <button class="rotate-button" @click="emit('rotate')">↻ <span>{{ t('Rotate 90°') }}</span></button>
     <button class="delete-button" @click="emit('remove')">{{ t('Remove object') }}</button>
   </aside>
 </template>
@@ -89,6 +114,27 @@ const emit = defineEmits<{
   &-heading .icon-button {
     font-size: 19px;
     line-height: 17px;
+  }
+}
+
+.rotation-controls {
+  display: flex;
+  width: 100%;
+  gap: 5px;
+  margin-top: 5px;
+
+  input {
+    flex: 1;
+    min-width: 0;
+    margin-top: 0;
+  }
+
+  .rotate-button {
+    flex: 0 0 31px;
+    width: 31px;
+    height: 31px;
+    padding: 0;
+    font-size: 16px;
   }
 }
 </style>

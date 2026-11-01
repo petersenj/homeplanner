@@ -531,6 +531,10 @@ function sideVector(side: FurnitureSide): Point {
   return { x: -1, y: 0 }
 }
 
+function normalizeRotation(rotation: number) {
+  return ((rotation % 360) + 360) % 360
+}
+
 function defaultRearSide(kind: FurnitureKind, width: number, depth: number): FurnitureSide {
   return getCatalogItem(kind).rearSide?.(width, depth) ?? 'top'
 }
@@ -894,7 +898,7 @@ function addItem(kind: FurnitureKind, at?: Point) {
     depth,
     height,
     floorOffset: definition.defaultFloorOffset ?? 0,
-    rotation: definition.wallMounted ? edgeAngle : 0,
+    rotation: definition.wallMounted ? normalizeRotation(edgeAngle) : 0,
   }
   items.value.push(item)
   selectedId.value = id
@@ -1218,7 +1222,7 @@ function onCanvasPointerMove(event: PointerEvent) {
     if (angleDelta > 180) angleDelta -= 360
     if (angleDelta < -180) angleDelta += 360
     const increment = event.shiftKey ? 1 : 10
-    const rotation = rotationStartItemAngle.value + Math.round(angleDelta / increment) * increment
+    const rotation = normalizeRotation(rotationStartItemAngle.value + Math.round(angleDelta / increment) * increment)
     if (isFurniturePlacementValid({ x: item.x, y: item.y }, item, rotation)) item.rotation = rotation
     return
   }
@@ -1227,13 +1231,13 @@ function onCanvasPointerMove(event: PointerEvent) {
     const projected = projectOnEdge(point, edge, item.width / 2)
     item.x = projected.point.x
     item.y = projected.point.y
-    item.rotation = Math.atan2(edge.end.y - edge.start.y, edge.end.x - edge.start.x) * 180 / Math.PI
+    item.rotation = normalizeRotation(Math.atan2(edge.end.y - edge.start.y, edge.end.x - edge.start.x) * 180 / Math.PI)
   } else {
     const snapped = snapFurnitureToWall(point, item)
     if (snapped) {
       item.x = snapped.point.x
       item.y = snapped.point.y
-      item.rotation = snapped.rotation
+      item.rotation = normalizeRotation(snapped.rotation)
     } else if (isFurniturePlacementValid(point, item)) {
       item.x = point.x
       item.y = point.y
@@ -1410,7 +1414,11 @@ function hideMeasurementDeleteLater(id: number) {
 }
 
 function rotateSelected() {
-  if (selectedItem.value) selectedItem.value.rotation = (selectedItem.value.rotation + 90) % 360
+  if (selectedItem.value) selectedItem.value.rotation = normalizeRotation(selectedItem.value.rotation + 90)
+}
+
+function updateSelectedRotation(rotation: number) {
+  if (selectedItem.value) selectedItem.value.rotation = normalizeRotation(rotation)
 }
 
 function changeZoom(amount: number, anchorPoint?: Point) {
@@ -1566,7 +1574,7 @@ function moveSelectedItemWithKeys(timestamp: number) {
       const projected = projectOnEdge(target, edge, item.width / 2)
       item.x = projected.point.x
       item.y = projected.point.y
-      item.rotation = Math.atan2(edge.end.y - edge.start.y, edge.end.x - edge.start.x) * 180 / Math.PI
+      item.rotation = normalizeRotation(Math.atan2(edge.end.y - edge.start.y, edge.end.x - edge.start.x) * 180 / Math.PI)
     } else if (isFurniturePlacementValid(target, item)) {
       item.x = target.x
       item.y = target.y
@@ -1625,6 +1633,7 @@ onMounted(() => {
         items.value = plan.items.map(({ rearSide: _rearSide, ...item }) => {
           const definition = getCatalogItem(item.kind)
           item.floorOffset ??= definition.defaultFloorOffset ?? 0
+          item.rotation = normalizeRotation(item.rotation)
           return definition.normalizeSavedItem?.(item) ?? item
         })
         wallSegments.value = plan.walls
@@ -1945,6 +1954,7 @@ watch([items, wallSegments, measurements, roomPoints, additionalRoomPoints, room
         :item-label="itemLabel"
         @close="selectedId = null"
         @rotate="rotateSelected"
+        @rotation-change="updateSelectedRotation"
         @remove="removeSelected"
       />
       <div v-if="activeTool === 'cube' && view === '2d'" class="placement-tip">{{ t('Click anywhere in the room to place your cube') }} <button @click="selectTool('select')">{{ t('Cancel') }}</button></div>

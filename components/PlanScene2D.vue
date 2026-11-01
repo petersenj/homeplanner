@@ -10,6 +10,7 @@ type PlanItem = {
   width: number
   depth: number
   height: number
+  floorOffset?: number
   rotation: number
   name?: string
   color?: string
@@ -87,6 +88,9 @@ let measurementHoverTimeout: ReturnType<typeof setTimeout> | undefined
 const displayRotations = reactive(new Map<number, number>())
 const rotationAnimations = new Map<number, { startedAt: number; startRotation: number; endRotation: number; finalRotation: number }>()
 let rotationFrame = 0
+const renderItems = computed(() => [...props.items].sort(
+  (first, second) => (first.floorOffset ?? 0) + first.height - ((second.floorOffset ?? 0) + second.height),
+))
 
 function showMeasurementDelete(id: number) {
   if (measurementHoverTimeout) clearTimeout(measurementHoverTimeout)
@@ -287,7 +291,7 @@ onBeforeUnmount(() => {
       <text v-if="drawingCursorClosesRoom" :x="drawingCursor?.x" :y="(drawingCursor?.y || 0) - 14" :transform="fixedSizeLabelTransform({ x: drawingCursor?.x || 0, y: (drawingCursor?.y || 0) - 14 })" text-anchor="middle" fill="#4f8063" font-size="10" font-weight="700">{{ t(activeTool === 'addRoom' ? 'FINISH ON WALL' : 'CLOSE ROOM') }}</text>
       <text v-else-if="activeTool === 'addRoom' && !drawingRoomPoints.length && drawingCursorSnapsToWall" :x="drawingCursor?.x" :y="(drawingCursor?.y || 0) - 14" :transform="fixedSizeLabelTransform({ x: drawingCursor?.x || 0, y: (drawingCursor?.y || 0) - 14 })" text-anchor="middle" fill="#4f8063" font-size="10" font-weight="700">{{ t('START HERE') }}</text>
     </g>
-    <g v-for="item in items" :key="item.id" class="plan-item" :class="{ 'is-selected': selectedId === item.id, 'is-dragging': isDragging && selectedId === item.id }" :transform="`translate(${item.x} ${item.y})`" @pointerdown="emit('itemPointerDown', $event, item)" @click.stop="emit('itemSelect', item.id)">
+    <g v-for="item in renderItems" :key="item.id" class="plan-item" :class="{ 'is-selected': selectedId === item.id, 'is-dragging': isDragging && selectedId === item.id }" :transform="`translate(${item.x} ${item.y})`" @pointerdown="emit('itemPointerDown', $event, item)" @click.stop="emit('itemSelect', item.id)">
       <g :transform="`rotate(${displayRotations.get(item.id) ?? item.rotation})`">
         <FurniturePlanGraphic :item="item" />
         <rect v-if="selectedId === item.id" :x="-item.width / 2 - 6" :y="-item.depth / 2 - 6" :width="item.width + 12" :height="item.depth + 12" rx="12" fill="none" stroke="#668774" stroke-width="2" stroke-dasharray="4 3"/>

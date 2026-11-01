@@ -15,17 +15,22 @@ export const definition = {
     { tag: 'path', attributes: { d: 'M7 10h28v22H7zM7 16h28M21 10v22M11 13h6m8 0h6' } },
   ],
   planShapes: (item) => {
-    const shapes: SvgShape[] = [
-      { tag: 'rect', attributes: { x: -item.width / 2, y: -6, width: item.width, height: 12, rx: 2, fill: '#77b9c1', stroke: '#3f8e98', 'stroke-width': 2 } },
-      { tag: 'path', attributes: { d: `M${-item.width / 2 + 4} 0h${item.width / 2 - 4}M4 0h${item.width / 2 - 4}M0 -6v12`, stroke: '#e9fbfb', 'stroke-width': 2 } },
-    ]
-    if (item.open) {
-      const halfWidth = item.width / 2
-      shapes.push(
-        { tag: 'path', attributes: { d: `M${-halfWidth} 0v${halfWidth}M${-halfWidth} ${halfWidth}A${halfWidth} ${halfWidth} 0 0 0 0 0`, fill: 'none', stroke: '#3f8e98', 'stroke-width': 1.5 } },
-        { tag: 'path', attributes: { d: `M${halfWidth} 0v${halfWidth}M${halfWidth} ${halfWidth}A${halfWidth} ${halfWidth} 0 0 1 0 0`, fill: 'none', stroke: '#3f8e98', 'stroke-width': 1.5 } },
-      )
-    }
+    const halfWidth = item.width / 2
+    const shapes: SvgShape[] = item.open
+      ? [
+          { tag: 'rect', attributes: { x: -halfWidth, y: 0, width: 12, height: halfWidth, rx: 2, fill: '#77b9c1', stroke: '#3f8e98', 'stroke-width': 2 } },
+          { tag: 'path', attributes: { d: `M${-halfWidth + 6} 4v${halfWidth - 8}`, stroke: '#e9fbfb', 'stroke-width': 2 } },
+          { tag: 'rect', attributes: { x: halfWidth - 12, y: 0, width: 12, height: halfWidth, rx: 2, fill: '#77b9c1', stroke: '#3f8e98', 'stroke-width': 2 } },
+          { tag: 'path', attributes: { d: `M${halfWidth - 6} 4v${halfWidth - 8}`, stroke: '#e9fbfb', 'stroke-width': 2 } },
+        ]
+      : [
+          { tag: 'rect', attributes: { x: -halfWidth, y: -6, width: item.width, height: 12, rx: 2, fill: '#77b9c1', stroke: '#3f8e98', 'stroke-width': 2 } },
+          { tag: 'path', attributes: { d: `M${-halfWidth + 4} 0h${halfWidth - 4}M4 0h${halfWidth - 4}M0 -6v12`, stroke: '#e9fbfb', 'stroke-width': 2 } },
+        ]
+    shapes.push(
+      { tag: 'path', attributes: { d: `M${-halfWidth} 0v${halfWidth}M${-halfWidth} ${halfWidth}A${halfWidth} ${halfWidth} 0 0 0 0 0`, fill: 'none', stroke: '#3f8e98', 'stroke-width': 1.5 } },
+      { tag: 'path', attributes: { d: `M${halfWidth} 0v${halfWidth}M${halfWidth} ${halfWidth}A${halfWidth} ${halfWidth} 0 0 1 0 0`, fill: 'none', stroke: '#3f8e98', 'stroke-width': 1.5 } },
+    )
     return shapes
   },
   createScene: (item, group, { box }) => {

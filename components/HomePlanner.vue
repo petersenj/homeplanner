@@ -2083,7 +2083,10 @@ watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints
       <div v-if="sidebarOpen" class="sidebar-scroll">
         <div class="sidebar-section project-section">
           <div class="section-eyebrow">{{ t('YOUR PROJECT') }}</div>
-          <button class="project-select" :aria-expanded="projectMenuOpen" aria-haspopup="menu" @click="projectMenuOpen = !projectMenuOpen"><span class="project-avatar">M</span><span class="project-copy">    <input v-model="planName" class="plan-name-input" maxlength="100" :aria-label="t('Plan name')" :title="t('Plan name')"/><small>{{ t('Personal floorplan') }}</small></span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
+          <button class="project-select" :aria-expanded="projectMenuOpen" aria-haspopup="menu" @click="projectMenuOpen = !projectMenuOpen">
+            <span class="project-avatar">M</span>
+            <span class="project-copy"><input v-model="planName" class="plan-name-input" maxlength="100" :aria-label="t('Plan name')" :title="t('Plan name')" :placeholder="planName"/><small>{{ t('Personal floorplan') }}</small></span>
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
           <div v-if="projectMenuOpen" class="project-menu">
                         <button @click="beginRoomDrawing">{{ t('Start a new floorplan') }}</button>
 
@@ -2366,8 +2369,9 @@ button { color: inherit; cursor: pointer; }
 .project-menu { position: absolute; z-index: 10; top: calc(100% - 8px); left: 19px; right: 19px; padding: 5px; border: 1px solid #e8e7e0; border-radius: 7px; background: #fff; box-shadow: 0 5px 16px #34322814; }
 .project-menu > button { width: 100%; padding: 9px 10px; border: 0; border-radius: 4px; background: transparent; color: #595d53; text-align: left; font-size: 10px; }
 .project-menu > button:hover { background: #f3f5f1; color: #526c59; }
-.project-avatar { display: grid; place-items: center; width: 35px; height: 35px; border-radius: 10px; color: #58715e; background: #edf1e9; font: 700 14px 'Manrope', sans-serif; }
+.project-avatar { display: grid; place-items: center; width: 35px; height: 35px; flex-shrink:0;border-radius: 10px; color: #58715e; background: #edf1e9; font: 700 14px 'Manrope', sans-serif; }
 .project-copy, .sidebar-bottom > span { display: grid; gap: 3px; margin-left: 10px; }
+.project-copy { display: flex; flex-direction: column; }
 .project-copy strong, .sidebar-bottom strong { font-size: 12px; font-weight: 600; }
 .project-copy small, .sidebar-bottom small { font-size: 10px; color: #999b93; }
 .project-select > svg { width: 15px; margin-left: auto; fill: none; stroke: #8e9088; stroke-width: 1.5; }
@@ -2377,9 +2381,9 @@ button { color: inherit; cursor: pointer; }
 .room-row { width: 100%; height: 35px; display: flex; align-items: center; gap: 9px; border: 0; border-radius: 6px; padding: 0 9px; background: transparent; text-align: left; font-size: 11px; }
 .room-entry { margin-bottom: 4px; }
 .active-room { background: #f1f4ef; color: #526c59; font-weight: 600; }
-.room-name-input { width: 0; min-width: 0; flex: 1; padding: 3px 0; border: 0; outline: none; background: transparent; color: inherit; font: inherit; }
-.room-name-input:focus { box-shadow: 0 1px 0 #8ea18d; }
-.room-name-input::placeholder { color: #8a9485; }
+.room-name-input, .plan-name-input { width: auto; flex: 1; padding: 3px 0; border: 0; outline: none; background: transparent; color: inherit; font: inherit; }
+.room-name-input:focus, .plan-name-input:focus { box-shadow: 0 1px 0 #8ea18d; }
+.room-name-input::placeholder, .plan-name-input::placeholder { color: #8a9485; }
 .room-item-count { min-width: 17px; height: 17px; display: grid; place-items: center; border-radius: 5px; background: #e6ece3; color: #697d68; font-size: 9px; font-weight: 600; }
 .room-expand-button { width: 19px; height: 22px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 4px; background: transparent; }
 .room-expand-button:hover:not(:disabled) { background: #e5ebe2; }

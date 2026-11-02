@@ -10,7 +10,7 @@ import {
 import type { SavedPlan } from '~/utils/planLibrary'
 import type { Point } from '~/types/planner'
 
-type PlanLibraryDialog = 'save-as' | 'open' | null
+type PlanLibraryDialog = 'save-as' | 'open' | 'delete-plan' | null
 
 export function usePlanLibrary(options: {
   getPlan: () => PlanFileExport
@@ -25,6 +25,7 @@ export function usePlanLibrary(options: {
   const dialog = ref<PlanLibraryDialog>(null)
   const saveAsName = ref('')
   const selectedPlanId = ref<string | null>(null)
+  const pendingDeletePlanId = ref<string | null>(null)
   const operationError = ref('')
   let isMounted = false
 
@@ -124,6 +125,11 @@ export function usePlanLibrary(options: {
     dialog.value = 'open'
   }
 
+  function markUnsaved() {
+    window.localStorage.removeItem(ACTIVE_PLAN_ID_STORAGE_KEY)
+    activePlanId.value = null
+  }
+
   function openSelectedPlan() {
     const savedPlan = savedPlans.value.find((plan) => plan.id === selectedPlanId.value)
     if (!savedPlan) return
@@ -140,16 +146,51 @@ export function usePlanLibrary(options: {
     }
   }
 
+  function requestDeletePlan(id: string) {
+    pendingDeletePlanId.value = id
+    dialog.value = 'delete-plan'
+  }
+
+  function cancelDeletePlan() {
+    pendingDeletePlanId.value = null
+    dialog.value = 'open'
+  }
+
+  function confirmDeletePlan() {
+    const planId = pendingDeletePlanId.value
+    if (!planId) return
+
+    try {
+      persistLibrary(savedPlans.value.filter((plan) => plan.id !== planId))
+      if (activePlanId.value === planId) {
+        window.localStorage.removeItem(ACTIVE_PLAN_ID_STORAGE_KEY)
+        activePlanId.value = null
+      }
+      if (selectedPlanId.value === planId) selectedPlanId.value = null
+      pendingDeletePlanId.value = null
+      operationError.value = ''
+      dialog.value = 'open'
+    } catch (error) {
+      reportError('Could not delete this saved plan.', error)
+    }
+  }
+
   function cancelDialog() {
     dialog.value = null
+    pendingDeletePlanId.value = null
   }
 
   return {
     activePlanId,
     cancelDialog,
+    cancelDeletePlan,
+    confirmDeletePlan,
     dialog,
     openSelectedPlan,
     operationError,
+    markUnsaved,
+    pendingDeletePlanId,
+    requestDeletePlan,
     requestOpen,
     requestSaveAs,
     saveAsName,

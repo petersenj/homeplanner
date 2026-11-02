@@ -32,6 +32,8 @@
     "Change language": "Sprache ändern",
     "Select language": "Sprache auswählen",
     "Export JSON": "JSON exportieren",
+    "Import JSON": "JSON importieren",
+    "Dismiss": "Schließen",
     "Personal plan": "Persönlicher Plan",
     "Personal floorplan": "Persönlicher Grundriss",
     "Your workspace": "Dein Arbeitsbereich",
@@ -144,6 +146,10 @@
     "This opening cannot fit on a wall without overlapping another opening.": "Diese Öffnung passt nicht an die Wand, ohne eine andere Öffnung zu überlappen."
   },
   "dialog": {
+    "IMPORT PLAN": "PLAN IMPORTIEREN",
+    "Replace the current floorplan?": "Aktuellen Grundriss ersetzen?",
+    "Importing this file will replace your current floorplan, including rooms, furniture, walls, and measurements.": "Der Import ersetzt deinen aktuellen Grundriss einschließlich Räumen, Möbeln, Wänden und Messungen.",
+    "Import plan": "Plan importieren",
     "NEW FLOORPLAN": "NEUER GRUNDRISS",
     "Start a new floorplan?": "Neuen Grundriss beginnen?",
     "Your current floorplan, including its room outline, furniture, walls, and measurements, will be cleared.": "Dein aktueller Grundriss mit Räumen, Möbeln, Wänden und Messungen wird gelöscht.",
@@ -210,6 +216,9 @@
     "Fullscreen": "Vollbild"
   },
   "errors": {
+    "Could not read the selected file.": "Die ausgewählte Datei konnte nicht gelesen werden.",
+    "The selected file is not valid JSON.": "Die ausgewählte Datei enthält kein gültiges JSON.",
+    "The selected file is not a valid Floorwise plan.": "Die ausgewählte Datei ist kein gültiger Floorwise-Plan.",
     "Finish drawing the floorplan before adding items.": "Zeichne zuerst den Grundriss fertig, bevor du Elemente hinzufügst.",
     "Start on an existing room wall or corner.": "Beginne an einer vorhandenen Raumwand oder Ecke.",
     "Add at least three corners to close the room.": "Füge mindestens drei Ecken hinzu, um den Raum zu schließen.",

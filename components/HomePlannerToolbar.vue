@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import HomePlannerImportExport from '~/components/HomePlannerImportExport.vue'
+import type { ImportedPlan, PlanFileExport } from '~/utils/planFile'
+import type { Point } from '~/types/planner'
+
 defineProps<{
   t: (key: string) => string
   language: string
@@ -10,12 +14,15 @@ defineProps<{
   showCustomMeasurements: boolean
   zoom: number
   roomCount: number
+  plan: PlanFileExport
+  validateRoomLayout: (rooms: Point[][]) => boolean
 }>()
+
+const importedPlan = defineModel<ImportedPlan | null>('importedPlan')
 
 const emit = defineEmits<{
   toggleSidebar: []
   languageChange: [event: Event]
-  export: []
   'update:view': [view: '2d' | '3d']
   selectTool: [tool: 'select' | 'measure']
   addRoom: []
@@ -35,7 +42,12 @@ const emit = defineEmits<{
         <option value="de">{{ t('German') }}</option>
       </select>
       <button class="top-icon disabled-icon" :title="t('Undo is not available yet')" :aria-label="t('Undo')" disabled>↶</button><button class="top-icon disabled-icon" :title="t('Redo is not available yet')" :aria-label="t('Redo')" disabled>↷</button>
-      <span class="action-divider"></span><button class="export-button" @click="emit('export')">{{ t('Export JSON') }} <span>↗</span></button>
+      <HomePlannerImportExport
+        :t="t"
+        :plan="plan"
+        :validate-room-layout="validateRoomLayout"
+        v-model:imported-plan="importedPlan"
+      />
     </div>
   </header>
   <div class="toolbar-row">

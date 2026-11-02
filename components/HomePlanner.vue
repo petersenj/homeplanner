@@ -3,6 +3,7 @@ import { defineAsyncComponent } from 'vue'
 import { catalogItemsByKind, getCatalogItem } from '~/catalog'
 import type { CatalogItem, FurnitureSide } from '~/catalog/types'
 import type { CameraSnapshot, DragMeasurement, Measurement, Point, RoomEdge } from '~/types/planner'
+import type { ImportedPlan } from '~/utils/planFile'
 
 const RoomScene3D = defineAsyncComponent(() => import('~/components/RoomScene3D.vue'))
 const PlanScene2D = defineAsyncComponent(() => import('~/components/PlanScene2D.vue'))
@@ -1784,29 +1785,39 @@ function onCanvasWheel(event: WheelEvent) {
   changeZoom(event.deltaY > 0 ? -0.1 : 0.1, svgPoint(event, svg))
 }
 
-function exportPlan() {
-  const plan = {
-    name: 'Living room',
-    units: 'cm',
-    room: {
-      width: roomBounds.value.width,
-      depth: roomBounds.value.height,
-      points: roomPoints.value,
-      area: roomArea.value,
-    },
-    rooms: allRooms.value,
-    roomNames: roomNames.value,
-    items: items.value,
-    roomWallDimensions: roomWallDimensions.value,
-    measurements: measurements.value,
-  }
-  const url = URL.createObjectURL(new Blob([JSON.stringify(plan, null, 2)], { type: 'application/json' }))
-  const link = document.createElement('a')
-  link.href = url
-  link.download = 'floorwise-plan.json'
-  link.click()
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
+const exportPlanData = computed(() => ({
+  name: 'Living room',
+  units: 'cm',
+  room: {
+    width: roomBounds.value.width,
+    depth: roomBounds.value.height,
+    points: roomPoints.value,
+    area: roomArea.value,
+  },
+  rooms: allRooms.value,
+  roomNames: roomNames.value,
+  items: items.value,
+  roomWallDimensions: roomWallDimensions.value,
+  measurements: measurements.value,
+}))
+
+const importedPlanModel = computed<ImportedPlan | null>({
+  get: () => null,
+  set: (plan) => {
+    if (!plan) return
+    items.value = plan.items
+    roomWallDimensions.value = plan.roomWallDimensions
+    measurements.value = plan.measurements
+    roomPoints.value = plan.rooms[0] ?? []
+    additionalRoomPoints.value = plan.rooms.slice(1)
+    roomNames.value = plan.roomNames
+    nextId.value = Math.max(10, ...plan.items.map((item) => item.id + 1), ...plan.measurements.map((measurement) => measurement.id + 1))
+    selectedId.value = null
+    selectedWallId.value = null
+    clearCanvasDraft()
+    activeTool.value = 'select'
+  },
+})
 
 function formatLength(start: Point, end: Point) {
   const meters = Math.hypot(end.x - start.x, end.y - start.y) / SCALE
@@ -2153,9 +2164,11 @@ watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints
         :show-custom-measurements="showCustomMeasurements"
         :zoom="zoom"
         :room-count="allRooms.length"
+        :plan="exportPlanData"
+        :validate-room-layout="isValidRoomLayout"
+        v-model:imported-plan="importedPlanModel"
         @toggle-sidebar="sidebarOpen = !sidebarOpen"
         @language-change="onLanguageChange"
-        @export="exportPlan"
         @update:view="view = $event"
         @select-tool="selectTool"
         @add-room="beginRoomAddition"
@@ -2547,7 +2560,7 @@ button { color: inherit; cursor: pointer; }
   .sidebar-scroll { overscroll-behavior: contain; padding-bottom: env(safe-area-inset-bottom); }
   .sidebar-brand-row { padding-top: env(safe-area-inset-top); }
   .sidebar-bottom { padding-bottom: env(safe-area-inset-bottom); }
-  .topbar { height: 56px; flex-basis: 56px; padding: 0 12px; }.breadcrumbs { gap: 6px; font-size: 10px; }.saved-state { display: none; }.mobile-menu { display: inline-block; padding: 0 5px; font-size: 15px; }.top-actions { gap: 3px; }.top-icon, .action-divider, .share-button { display: none; }.export-button { height: 30px; font-size: 9px; }
+  .topbar { height: 56px; flex-basis: 56px; padding: 0 12px; }.breadcrumbs { gap: 6px; font-size: 10px; }.saved-state { display: none; }.mobile-menu { display: inline-block; padding: 0 5px; font-size: 15px; }.top-actions { gap: 3px; }.top-icon, .action-divider, .share-button { display: none; }.export-button { height: 30px; padding: 0 7px; font-size: 9px; }
   .toolbar-row { height: 56px; flex-basis: 56px; padding: 0 12px; }.view-switch button { padding: 0 8px; font-size: 9px; }.tool-actions { gap: 1px; }.tool-button { width: 26px; height: 27px; }.tool-button:nth-of-type(4), .tool-button:nth-of-type(5), .tool-actions .toolbar-divider:nth-of-type(2), .zoom-button, .zoom-level { display: none; }.tool-hint { display: none; }
   .canvas-area { min-height: 350px; padding: 3px 10px 0; }.plan-svg { min-height: 350px; }.canvas-footer { padding: 0 4px; gap: 5px; font-size: 8px; }.inspector { top: 122px; right: 20px; width: 220px; }.canvas-compass { right: 9px; top: 9px; }.canvas-scale { right: 10px; bottom: 10px; }
   .scene-controls { max-width: calc(100% - 22px); width: max-content; bottom: 10px; gap: 0; }.scene-controls span { padding: 5px; font-size: 8px; }.scene-top-left { top: 10px; left: 10px; }.scene-compass { top: 10px; right: 10px; }.scene-walls-toggle { top: 58px; right: 10px; }.scene-top-view-toggle { top: 94px; right: 10px; }.scene-fullscreen { right: 10px; bottom: 86px; }.scene-reset { right: 10px; bottom: 51px; }.scene-selection { left: 10px; bottom: 12px; }

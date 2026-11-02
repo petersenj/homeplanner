@@ -1,122 +1,152 @@
 [
   {
-    "date": "2026-11-01",
-    "subject": "changed open/close radios to be switch component"
+    "date": "2026-11-02",
+    "subject": "[feat] increased max floorsize to be 20m wide",
+    "type": "feature"
+  },
+  {
+    "date": "2026-11-02",
+    "subject": "add proper keyboard+mouse interaction doc and improved labels",
+    "type": "feature"
+  },
+  {
+    "date": "2026-11-02",
+    "subject": "remove legacy walls",
+    "type": "improvement"
   },
   {
     "date": "2026-11-01",
-    "subject": "fixed 2d visuals for doors and windows"
+    "subject": "changed open/close radios to be switch component",
+    "type": "other"
   },
   {
     "date": "2026-11-01",
-    "subject": "improve 3d camera rotation suppressing click"
+    "subject": "fixed 2d visuals for doors and windows",
+    "type": "bugfix"
   },
   {
     "date": "2026-11-01",
-    "subject": "add drag n drop for catalog items in 2d mode"
+    "subject": "improve 3d camera rotation suppressing click",
+    "type": "improvement"
   },
   {
     "date": "2026-11-01",
-    "subject": "add delete key to remove items"
+    "subject": "add drag n drop for catalog items in 2d mode",
+    "type": "feature"
   },
   {
     "date": "2026-11-01",
-    "subject": "add single wing window"
+    "subject": "add delete key to remove items",
+    "type": "feature"
   },
   {
     "date": "2026-11-01",
-    "subject": "simplify opening logic for doors and windows, make it later usale for other items as well"
+    "subject": "add single wing window",
+    "type": "feature"
   },
   {
     "date": "2026-11-01",
-    "subject": "fix window-details only rotate 180degrees and fix 2d window opening visual"
+    "subject": "simplify opening logic for doors and windows, make it later usale for other items as well",
+    "type": "other"
   },
   {
     "date": "2026-11-01",
-    "subject": "add openings for doors and windows - also remove default window in a new room"
+    "subject": "fix window-details only rotate 180degrees and fix 2d window opening visual",
+    "type": "bugfix"
   },
   {
     "date": "2026-11-01",
-    "subject": "added opening states for windows and doors"
+    "subject": "add openings for doors and windows - also remove default window in a new room",
+    "type": "feature"
   },
   {
     "date": "2026-11-01",
-    "subject": "add coloring tools for carpet and cube"
+    "subject": "added opening states for windows and doors",
+    "type": "feature"
   },
   {
     "date": "2026-11-01",
-    "subject": "remove click handler from camera facing wall"
+    "subject": "add coloring tools for carpet and cube",
+    "type": "feature"
   },
   {
     "date": "2026-11-01",
-    "subject": "added wall modifications and dragging"
+    "subject": "remove click handler from camera facing wall",
+    "type": "improvement"
   },
   {
     "date": "2026-11-01",
-    "subject": "removed unneccessary item decals from 2d and 3d visual"
+    "subject": "added wall modifications and dragging",
+    "type": "feature"
   },
   {
     "date": "2026-11-01",
-    "subject": "restore last cameraposition when switching between 2d and 3d"
+    "subject": "removed unneccessary item decals from 2d and 3d visual",
+    "type": "improvement"
   },
   {
     "date": "2026-11-01",
-    "subject": "add correct visible order top down when in 2d mode"
+    "subject": "restore last cameraposition when switching between 2d and 3d",
+    "type": "improvement"
   },
   {
     "date": "2026-11-01",
-    "subject": "moved 2D logic into its own component"
+    "subject": "add correct visible order top down when in 2d mode",
+    "type": "feature"
   },
   {
     "date": "2026-11-01",
-    "subject": "add smooth rotation animation in 2d and 3d"
+    "subject": "moved 2D logic into its own component",
+    "type": "other"
   },
   {
     "date": "2026-11-01",
-    "subject": "sort furniture and objects by localised label"
+    "subject": "add smooth rotation animation in 2d and 3d",
+    "type": "feature"
   },
   {
     "date": "2026-11-01",
-    "subject": "show measurements while dragging with keyboard"
+    "subject": "sort furniture and objects by localised label",
+    "type": "other"
   },
   {
     "date": "2026-11-01",
-    "subject": "improve rotation handling"
+    "subject": "show measurements while dragging with keyboard",
+    "type": "other"
   },
   {
     "date": "2026-11-01",
-    "subject": "add carpet furniture item"
+    "subject": "improve rotation handling",
+    "type": "improvement"
   },
   {
     "date": "2026-11-01",
-    "subject": "add item translation to its own file"
+    "subject": "add carpet furniture item",
+    "type": "feature"
   },
   {
     "date": "2026-11-01",
-    "subject": "move furniture and objects into folder structure to be easily expandable"
+    "subject": "add item translation to its own file",
+    "type": "feature"
   },
   {
     "date": "2026-11-01",
-    "subject": "update changelog"
+    "subject": "move furniture and objects into folder structure to be easily expandable",
+    "type": "other"
   },
   {
     "date": "2026-11-01",
-    "subject": "add sass, start moving styles into components, also restructure app to have components instead one huge file"
+    "subject": "update changelog",
+    "type": "other"
+  },
+  {
+    "date": "2026-11-01",
+    "subject": "add sass, start moving styles into components, also restructure app to have components instead one huge file",
+    "type": "feature"
   },
   {
     "date": "2026-10-29",
-    "subject": "make grid use variable size prop and expand canvas"
-  },
-  {
-    "date": "2026-10-26",
-    "subject": "move confirmations into new dialog component"
-  },
-  {
-    "date": "2026-10-26",
-    "subject": "add corner removal (right click) and guard to prevent removal of corners where walls meet"
-  },
-  {
-    "date": "2026-10-26",
-    "subject": "add room resizing and adding corners"
+    "subject": "make grid use variable size prop and expand canvas",
+    "type": "other"
   }
 ]

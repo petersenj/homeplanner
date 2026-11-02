@@ -13,12 +13,55 @@ const gitLog = execFileSync('git', [
   '--pretty=format:%cs%x1f%s',
 ], { cwd: projectRoot, encoding: 'utf8' })
 
+function getChangeType(subject) {
+  const normalizedSubject = subject.trim().toLowerCase()
+
+  if (
+    normalizedSubject.startsWith('[feat]')
+    || normalizedSubject.startsWith('[feature]')
+    || normalizedSubject.startsWith('feat')
+    || normalizedSubject.startsWith('feat:')
+    || normalizedSubject.startsWith('feature:')
+    || normalizedSubject.startsWith('add ')
+    || normalizedSubject.startsWith('added ')
+  ) {
+    return 'feature'
+  }
+  if (
+    normalizedSubject.startsWith('[bug]')
+    || normalizedSubject.startsWith('[bugfix]')
+    || normalizedSubject.startsWith('bug ')
+    || normalizedSubject.startsWith('bug:')
+    || normalizedSubject.startsWith('bugfix ')
+    || normalizedSubject.startsWith('bugfix:')
+    || normalizedSubject.startsWith('[fix]')
+    || normalizedSubject.startsWith('fix:')
+    || normalizedSubject.startsWith('fix')
+  ) {
+    return 'bugfix'
+  }
+  if (
+    normalizedSubject.startsWith('[improve]')
+    || normalizedSubject.startsWith('[improvement]')
+    || normalizedSubject.startsWith('improve ')
+    || normalizedSubject.startsWith('improve:')
+    || normalizedSubject.startsWith('improvement:')
+    || normalizedSubject.startsWith('remove')
+    || normalizedSubject.startsWith('restore')
+  ) {
+    return 'improvement'
+  }
+
+  return 'other'
+}
+
 const entries = gitLog.split(/\r?\n/).filter(Boolean).map((line) => {
   const [date, ...subjectParts] = line.split('\x1f')
   if (!date || !subjectParts.length) {
     throw new Error(`Unexpected Git log entry: ${line}`)
   }
-  return { date, subject: subjectParts.join('\x1f') }
+  const subject = subjectParts.join('\x1f')
+  return { date, subject, type: getChangeType(subject) }
 })
 
 mkdirSync(dirname(outputPath), { recursive: true })

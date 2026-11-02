@@ -25,7 +25,7 @@ type FurnitureKind = string
 type PlanItem = CatalogItem
 
 const SCALE = 100
-const VIEW_WIDTH = 1280
+const VIEW_WIDTH = 1980
 const VIEW_HEIGHT = 1280
 const GRID_SIZE = 50
 const FURNITURE_WALL_SNAP_DISTANCE = 25

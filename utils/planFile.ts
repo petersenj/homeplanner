@@ -139,11 +139,12 @@ export function parsePlanFile(value: unknown, isValidRoomLayout: (rooms: Point[]
   return { items, roomWallDimensions, measurements, rooms, roomNames }
 }
 
-export function downloadPlanFile(plan: PlanFileExport) {
+export function downloadPlanFile(plan: PlanFileExport, planName: string) {
   const url = URL.createObjectURL(new Blob([JSON.stringify(plan, null, 2)], { type: 'application/json' }))
   const link = document.createElement('a')
   link.href = url
-  link.download = 'floorwise-plan.json'
+  const safeName = planName.trim().replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').replace(/[. ]+$/g, '').trim()
+  link.download = `${safeName || 'my-apartment'}-floorwise-plan.json`
   link.click()
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

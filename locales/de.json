@@ -33,6 +33,11 @@
     "Select language": "Sprache auswählen",
     "Export JSON": "JSON exportieren",
     "Import JSON": "JSON importieren",
+    "Save": "Speichern",
+    "Save as": "Speichern unter",
+    "Open": "Öffnen",
+    "Plan name": "Name des Plans",
+    "Plan actions": "Planaktionen",
     "Dismiss": "Schließen",
     "Personal plan": "Persönlicher Plan",
     "Personal floorplan": "Persönlicher Grundriss",
@@ -146,6 +151,13 @@
     "This opening cannot fit on a wall without overlapping another opening.": "Diese Öffnung passt nicht an die Wand, ohne eine andere Öffnung zu überlappen."
   },
   "dialog": {
+    "SAVE PLAN AS": "PLAN SPEICHERN UNTER",
+    "Save plan as": "Plan speichern unter",
+    "Create a separate saved copy of this floorplan.": "Erstelle eine separate gespeicherte Kopie dieses Grundrisses.",
+    "SAVED PLANS": "GESPEICHERTE PLÄNE",
+    "Open a plan": "Plan öffnen",
+    "Choose a saved plan to open.": "Wähle einen gespeicherten Plan zum Öffnen.",
+    "No saved plans yet.": "Noch keine Pläne gespeichert.",
     "IMPORT PLAN": "PLAN IMPORTIEREN",
     "Replace the current floorplan?": "Aktuellen Grundriss ersetzen?",
     "Importing this file will replace your current floorplan, including rooms, furniture, walls, and measurements.": "Der Import ersetzt deinen aktuellen Grundriss einschließlich Räumen, Möbeln, Wänden und Messungen.",
@@ -156,7 +168,10 @@
     "Clear floorplan": "Grundriss löschen",
     "RESET PLAN": "PLAN ZURÜCKSETZEN",
     "Reset plan?": "Plan zurücksetzen?",
-    "This will remove all placed items and measurements.": "Dadurch werden alle platzierten Elemente und Messungen entfernt."
+    "This will remove all placed items and measurements.": "Dadurch werden alle platzierten Elemente und Messungen entfernt.",
+    "DELETE SAVED PLAN": "GESPEICHERTEN PLAN LÖSCHEN",
+    "Delete this saved plan?": "Diesen gespeicherten Plan löschen?",
+    "This will permanently delete the saved plan. This cannot be undone.": "Der gespeicherte Plan wird endgültig gelöscht. Dieser Vorgang kann nicht rückgängig gemacht werden."
   },
   "tutorial": {
     "App tutorial": "App-Tutorial",
@@ -216,6 +231,12 @@
     "Fullscreen": "Vollbild"
   },
   "errors": {
+    "Could not delete this saved plan.": "Der gespeicherte Plan konnte nicht gelöscht werden.",
+    "Enter a name for this plan.": "Gib einen Namen für diesen Plan ein.",
+    "Could not load saved plans.": "Gespeicherte Pläne konnten nicht geladen werden.",
+    "Could not save the plan name.": "Der Planname konnte nicht gespeichert werden.",
+    "Could not save this plan. Check that browser storage is available.": "Der Plan konnte nicht gespeichert werden. Prüfe, ob der Browserspeicher verfügbar ist.",
+    "Could not open this plan because its saved data is invalid.": "Der Plan konnte nicht geöffnet werden, da seine gespeicherten Daten ungültig sind.",
     "Could not read the selected file.": "Die ausgewählte Datei konnte nicht gelesen werden.",
     "The selected file is not valid JSON.": "Die ausgewählte Datei enthält kein gültiges JSON.",
     "The selected file is not a valid Floorwise plan.": "Die ausgewählte Datei ist kein gültiger Floorwise-Plan.",

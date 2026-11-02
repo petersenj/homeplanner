@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { defineAsyncComponent } from 'vue'
+import HomePlannerImportExport from '~/components/HomePlannerImportExport.vue'
 import { catalogItemsByKind, getCatalogItem } from '~/catalog'
 import type { CatalogItem, FurnitureSide } from '~/catalog/types'
 import type { CameraSnapshot, DragMeasurement, Measurement, Point, RoomEdge } from '~/types/planner'
@@ -8,6 +9,7 @@ import type { ImportedPlan } from '~/utils/planFile'
 const RoomScene3D = defineAsyncComponent(() => import('~/components/RoomScene3D.vue'))
 const PlanScene2D = defineAsyncComponent(() => import('~/components/PlanScene2D.vue'))
 const { language, setLanguage, t } = useAppLanguage()
+const planName = ref('My apartment')
 
 type DragAxis = 'x' | 'y'
 type WallMountedAnchor = {
@@ -1786,7 +1788,7 @@ function onCanvasWheel(event: WheelEvent) {
 }
 
 const exportPlanData = computed(() => ({
-  name: 'Living room',
+  name: planName.value,
   units: 'cm',
   room: {
     width: roomBounds.value.width,
@@ -2081,9 +2083,17 @@ watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints
       <div v-if="sidebarOpen" class="sidebar-scroll">
         <div class="sidebar-section project-section">
           <div class="section-eyebrow">{{ t('YOUR PROJECT') }}</div>
-          <button class="project-select" :aria-expanded="projectMenuOpen" aria-haspopup="menu" @click="projectMenuOpen = !projectMenuOpen"><span class="project-avatar">M</span><span class="project-copy"><strong>{{ t('My apartment') }}</strong><small>{{ t('Personal floorplan') }}</small></span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
-          <div v-if="projectMenuOpen" class="project-menu" role="menu">
-            <button role="menuitem" @click="beginRoomDrawing">{{ t('Start a new floorplan') }}</button>
+          <button class="project-select" :aria-expanded="projectMenuOpen" aria-haspopup="menu" @click="projectMenuOpen = !projectMenuOpen"><span class="project-avatar">M</span><span class="project-copy">    <input v-model="planName" class="plan-name-input" maxlength="100" :aria-label="t('Plan name')" :title="t('Plan name')"/><small>{{ t('Personal floorplan') }}</small></span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
+          <div v-if="projectMenuOpen" class="project-menu">
+                        <button @click="beginRoomDrawing">{{ t('Start a new floorplan') }}</button>
+
+            <HomePlannerImportExport
+              :t="t"
+              :plan="exportPlanData"
+              :validate-room-layout="isValidRoomLayout"
+              v-model:plan-name="planName"
+              v-model:imported-plan="importedPlanModel"
+            />
           </div>
         </div>
 
@@ -2156,6 +2166,7 @@ watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints
       <HomePlannerToolbar
         :t="t"
         :language="language"
+        :plan-name="planName"
         :view="view"
         :active-tool="activeTool"
         :sidebar-open="sidebarOpen"
@@ -2164,9 +2175,6 @@ watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints
         :show-custom-measurements="showCustomMeasurements"
         :zoom="zoom"
         :room-count="allRooms.length"
-        :plan="exportPlanData"
-        :validate-room-layout="isValidRoomLayout"
-        v-model:imported-plan="importedPlanModel"
         @toggle-sidebar="sidebarOpen = !sidebarOpen"
         @language-change="onLanguageChange"
         @update:view="view = $event"
@@ -2356,8 +2364,8 @@ button { color: inherit; cursor: pointer; }
 .section-eyebrow { color: #92948b; font-size: 9px; font-weight: 700; letter-spacing: 1.08px; }
 .project-select { width: 100%; display: flex; align-items: center; text-align: left; margin-top: 12px; padding: 0; background: none; border: 0; }
 .project-menu { position: absolute; z-index: 10; top: calc(100% - 8px); left: 19px; right: 19px; padding: 5px; border: 1px solid #e8e7e0; border-radius: 7px; background: #fff; box-shadow: 0 5px 16px #34322814; }
-.project-menu button { width: 100%; padding: 9px 10px; border: 0; border-radius: 4px; background: transparent; color: #595d53; text-align: left; font-size: 10px; }
-.project-menu button:hover { background: #f3f5f1; color: #526c59; }
+.project-menu > button { width: 100%; padding: 9px 10px; border: 0; border-radius: 4px; background: transparent; color: #595d53; text-align: left; font-size: 10px; }
+.project-menu > button:hover { background: #f3f5f1; color: #526c59; }
 .project-avatar { display: grid; place-items: center; width: 35px; height: 35px; border-radius: 10px; color: #58715e; background: #edf1e9; font: 700 14px 'Manrope', sans-serif; }
 .project-copy, .sidebar-bottom > span { display: grid; gap: 3px; margin-left: 10px; }
 .project-copy strong, .sidebar-bottom strong { font-size: 12px; font-weight: 600; }
@@ -2449,10 +2457,8 @@ button { color: inherit; cursor: pointer; }
 .top-icon:hover { background: #f4f4ef; }
 .disabled-icon { color: #c9c9c3; }
 .action-divider { width: 1px; height: 21px; background: #eae9e3; margin: 0 5px; }
-.share-button, .export-button { height: 33px; display: flex; align-items: center; gap: 6px; border: 1px solid #e6e5df; border-radius: 6px; background: #fff; padding: 0 11px; font-size: 10px; }
+.share-button { height: 33px; display: flex; align-items: center; gap: 6px; border: 1px solid #e6e5df; border-radius: 6px; background: #fff; padding: 0 11px; font-size: 10px; }
 .share-button svg { width: 14px; fill: none; stroke: #73776f; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
-.export-button { border-color: #617e69; background: #668371; color: white; font-weight: 600; padding: 0 13px; }
-.export-button span { font-size: 13px; }
 .toolbar-row { height: 62px; flex: 0 0 62px; display: flex; justify-content: space-between; align-items: center; padding: 0 30px; }
 .view-switch { display: flex; gap: 3px; padding: 3px; background: #eeede7; border-radius: 7px; }
 .view-switch button { height: 30px; display: flex; align-items: center; gap: 6px; border: 0; border-radius: 5px; background: transparent; color: #898b83; padding: 0 11px; font-size: 10px; }
@@ -2560,7 +2566,7 @@ button { color: inherit; cursor: pointer; }
   .sidebar-scroll { overscroll-behavior: contain; padding-bottom: env(safe-area-inset-bottom); }
   .sidebar-brand-row { padding-top: env(safe-area-inset-top); }
   .sidebar-bottom { padding-bottom: env(safe-area-inset-bottom); }
-  .topbar { height: 56px; flex-basis: 56px; padding: 0 12px; }.breadcrumbs { gap: 6px; font-size: 10px; }.saved-state { display: none; }.mobile-menu { display: inline-block; padding: 0 5px; font-size: 15px; }.top-actions { gap: 3px; }.top-icon, .action-divider, .share-button { display: none; }.export-button { height: 30px; padding: 0 7px; font-size: 9px; }
+  .topbar { height: 56px; flex-basis: 56px; padding: 0 12px; }.breadcrumbs { gap: 6px; font-size: 10px; }.saved-state { display: none; }.mobile-menu { display: inline-block; padding: 0 5px; font-size: 15px; }.top-actions { gap: 3px; }.top-icon, .action-divider, .share-button { display: none; }
   .toolbar-row { height: 56px; flex-basis: 56px; padding: 0 12px; }.view-switch button { padding: 0 8px; font-size: 9px; }.tool-actions { gap: 1px; }.tool-button { width: 26px; height: 27px; }.tool-button:nth-of-type(4), .tool-button:nth-of-type(5), .tool-actions .toolbar-divider:nth-of-type(2), .zoom-button, .zoom-level { display: none; }.tool-hint { display: none; }
   .canvas-area { min-height: 350px; padding: 3px 10px 0; }.plan-svg { min-height: 350px; }.canvas-footer { padding: 0 4px; gap: 5px; font-size: 8px; }.inspector { top: 122px; right: 20px; width: 220px; }.canvas-compass { right: 9px; top: 9px; }.canvas-scale { right: 10px; bottom: 10px; }
   .scene-controls { max-width: calc(100% - 22px); width: max-content; bottom: 10px; gap: 0; }.scene-controls span { padding: 5px; font-size: 8px; }.scene-top-left { top: 10px; left: 10px; }.scene-compass { top: 10px; right: 10px; }.scene-walls-toggle { top: 58px; right: 10px; }.scene-top-view-toggle { top: 94px; right: 10px; }.scene-fullscreen { right: 10px; bottom: 86px; }.scene-reset { right: 10px; bottom: 51px; }.scene-selection { left: 10px; bottom: 12px; }

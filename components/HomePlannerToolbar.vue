@@ -1,11 +1,8 @@
 <script setup lang="ts">
-import HomePlannerImportExport from '~/components/HomePlannerImportExport.vue'
-import type { ImportedPlan, PlanFileExport } from '~/utils/planFile'
-import type { Point } from '~/types/planner'
-
 defineProps<{
   t: (key: string) => string
   language: string
+  planName: string
   view: '2d' | '3d'
   activeTool: 'select' | 'room' | 'addRoom' | 'measure' | 'window' | 'door' | 'cube' | 'furniture'
   sidebarOpen: boolean
@@ -14,11 +11,7 @@ defineProps<{
   showCustomMeasurements: boolean
   zoom: number
   roomCount: number
-  plan: PlanFileExport
-  validateRoomLayout: (rooms: Point[][]) => boolean
 }>()
-
-const importedPlan = defineModel<ImportedPlan | null>('importedPlan')
 
 const emit = defineEmits<{
   toggleSidebar: []
@@ -35,19 +28,13 @@ const emit = defineEmits<{
 
 <template>
   <header class="topbar">
-    <div class="breadcrumbs"><button class="mobile-menu icon-button" :aria-label="t('Toggle sidebar')" :aria-expanded="sidebarOpen" @click="emit('toggleSidebar')">☰</button><span>{{ t('My apartment') }}</span><span class="saved-state"><span></span> {{ t('All changes saved') }}</span></div>
+    <div class="breadcrumbs"><button class="mobile-menu icon-button" :aria-label="t('Toggle sidebar')" :aria-expanded="sidebarOpen" @click="emit('toggleSidebar')">☰</button><span>{{ planName }}</span><span class="saved-state"><span></span> {{ t('All changes saved') }}</span></div>
     <div class="top-actions">
       <select class="language-switch" :value="language" :aria-label="t('Change language')" :title="t('Change language')" @change="emit('languageChange', $event)">
         <option value="en">{{ t('English') }}</option>
         <option value="de">{{ t('German') }}</option>
       </select>
       <button class="top-icon disabled-icon" :title="t('Undo is not available yet')" :aria-label="t('Undo')" disabled>↶</button><button class="top-icon disabled-icon" :title="t('Redo is not available yet')" :aria-label="t('Redo')" disabled>↷</button>
-      <HomePlannerImportExport
-        :t="t"
-        :plan="plan"
-        :validate-room-layout="validateRoomLayout"
-        v-model:imported-plan="importedPlan"
-      />
     </div>
   </header>
   <div class="toolbar-row">

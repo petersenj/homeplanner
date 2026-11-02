@@ -778,11 +778,6 @@ onBeforeUnmount(() => {
     >
       {{ t(isTopDownView ? 'Exit top-down view' : 'Top-down · North up') }}
     </button>
-    <div class="scene-controls" :aria-label="t('3D view controls')">
-      <span><i class="control-orbit">↻</i> {{ t('Drag to orbit') }}</span>
-      <span><i class="control-pan">✥</i> {{ t('Right-drag to pan') }}</span>
-      <span><i class="control-zoom">⌕</i> {{ t('Scroll to zoom') }}</span>
-    </div>
     <div class="scene-compass"><span>N</span><span>↑</span></div>
     <div v-if="selectedItem" class="scene-selection">
       <span :style="{ background: selectedItem.color || '#8e967e' }"></span>

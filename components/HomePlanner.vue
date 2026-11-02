@@ -431,10 +431,10 @@ const planViewBox = computed(() => {
   return `${(VIEW_WIDTH - width) / 2 + panOffset.value.x} ${(VIEW_HEIGHT - height) / 2 + panOffset.value.y} ${width} ${height}`
 })
 function fixedSizeLabelTransform(point: Point, rotation = 0) {
-  return `translate(${point.x} ${point.y}) scale(${1 / Math.min(zoom.value, 2)}) rotate(${rotation}) translate(${-point.x} ${-point.y})`
+  return `translate(${point.x} ${point.y}) scale(${1 / Math.min(zoom.value, 1.5)}) rotate(${rotation}) translate(${-point.x} ${-point.y})`
 }
 function fixedSizeGroupTransform(point: Point) {
-  return `translate(${point.x} ${point.y}) scale(${1 / Math.min(zoom.value, 2)})`
+  return `translate(${point.x} ${point.y}) scale(${1 / Math.min(zoom.value, 1.5)})`
 }
 const scaleBar = computed(() => {
   if (!canvasCardWidth.value) return { label: '1 m', width: 40 }
@@ -2165,7 +2165,7 @@ watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints
         @zoom="changeZoom"
       />
       <div class="canvas-area">
-        <div class="canvas-label"><span class="canvas-status"></span> {{ t(view === '2d' ? 'FLOOR PLAN' : 'INTERACTIVE 3D') }} <span class="label-divider">·</span> {{ view === '2d' ? (allRooms.length > 1 ? `${allRooms.length} ${t('ROOMS')}` : roomDisplayName(roomNames[0], 0).toUpperCase()) : t('DRAG TO ORBIT') }}</div>
+        <div class="canvas-label"><span class="canvas-status"></span> {{ t(view === '2d' ? 'FLOOR PLAN' : 'INTERACTIVE 3D') }} <span class="label-divider">·</span> {{allRooms.length}} {{ t(allRooms.length > 1 ? t('ROOMS') : t('ROOM') ) }}</div>
         <div ref="canvasCard" class="canvas-card" :class="{ 'immersive-card': view === '3d' }" @wheel="onCanvasWheel">
           <PlanScene2D
             v-if="view === '2d'"
@@ -2255,7 +2255,7 @@ watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints
             <div class="canvas-scale"><span class="scale-line" :style="{ width: `${scaleBar.width}px` }"></span><span>{{ scaleBar.label }}</span></div>
           </template>
         </div>
-        <div class="canvas-footer"><span v-if="canvasActionError" role="status">{{ t(canvasActionError) }}</span><span v-else-if="view === '2d'">{{ t('Drag walls or corners · click walls to select · choose Add room to add wall corners · right-click corners to remove · right-drag to pan · scroll to zoom') }}</span><span v-else>{{ t('Drag to orbit · right-drag to pan · scroll to zoom · select a wall or object and use arrow keys to move it') }}</span><span class="footer-separator">·</span><span>{{ placedCount }} {{ t('objects') }}</span><span class="footer-separator">·</span><span>{{ totalArea }} m² {{ t('floor area') }}</span><span class="footer-spacer"></span><button @click="clearPlan">{{ t('Reset plan') }}</button></div>
+        <div class="canvas-footer"><AppKeyboardMouseAid :view="view" :t="t" /><span v-if="canvasActionError" role="status">{{ t(canvasActionError) }}</span><span>{{ placedCount }} {{ t('objects') }}</span><span class="footer-separator">·</span><span>{{ totalArea }} m² {{ t('floor area') }}</span><span class="footer-spacer"></span><button @click="clearPlan">{{ t('Reset plan') }}</button></div>
       </div>
       <HomePlannerInspector
         v-if="selectedItem || selectedRoomWall"

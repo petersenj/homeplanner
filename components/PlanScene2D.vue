@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { getCatalogItem } from '~/catalog'
 import type { CatalogItem } from '~/catalog/types'
-import type { DragMeasurement, LiveMeasurement, Measurement, Point, RoomEdge, Wall } from '~/types/planner'
+import type { DragMeasurement, LiveMeasurement, Measurement, Point, RoomEdge } from '~/types/planner'
 
 type PlanItem = CatalogItem
 
@@ -22,7 +22,6 @@ const props = defineProps<{
   roomNames: string[]
   roomDisplayName: (name: string | undefined, index: number) => string
   roomAreaFor: (points: Point[]) => number
-  wallSegments: Wall[]
   roomWallDimensions: Record<string, { depth: number; height: number }>
   showCustomMeasurements: boolean
   measurements: Measurement[]
@@ -243,10 +242,6 @@ onBeforeUnmount(() => {
         <text text-anchor="middle" class="room-name-label">{{ roomDisplayName(roomNames[index], index) }}</text>
         <text y="15" text-anchor="middle" class="room-area-label">{{ (roomAreaFor(allRooms[index]!) / scale ** 2).toFixed(1) }} m²</text>
       </g>
-    </g>
-    <g v-for="wall in wallSegments" :key="`wall-${wall.id}`">
-      <line :x1="wall.start.x" :y1="wall.start.y" :x2="wall.end.x" :y2="wall.end.y" stroke="#45443f" stroke-width="10" stroke-linecap="square"/>
-      <line :x1="wall.start.x" :y1="wall.start.y" :x2="wall.end.x" :y2="wall.end.y" stroke="#c6b9a8" stroke-width="1"/>
     </g>
     <g
       v-if="showCustomMeasurements"

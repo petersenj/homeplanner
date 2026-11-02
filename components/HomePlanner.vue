@@ -2,7 +2,7 @@
 import { defineAsyncComponent } from 'vue'
 import { catalogItemsByKind, getCatalogItem } from '~/catalog'
 import type { CatalogItem, FurnitureSide } from '~/catalog/types'
-import type { CameraSnapshot, DragMeasurement, Measurement, Point, RoomEdge, Wall } from '~/types/planner'
+import type { CameraSnapshot, DragMeasurement, Measurement, Point, RoomEdge } from '~/types/planner'
 
 const RoomScene3D = defineAsyncComponent(() => import('~/components/RoomScene3D.vue'))
 const PlanScene2D = defineAsyncComponent(() => import('~/components/PlanScene2D.vue'))
@@ -63,7 +63,6 @@ const changelogOpen = ref(false)
 const appTutorial = ref<{ restart: () => void } | null>(null)
 const zoom = ref(1)
 const panOffset = ref<Point>({ x: 0, y: 0 })
-const wallSegments = ref<Wall[]>([])
 const roomWallDimensions = ref<Record<string, { depth: number; height: number }>>({})
 const measurements = ref<Measurement[]>([])
 const nextId = ref(10)
@@ -634,15 +633,11 @@ function defaultRearSide(kind: FurnitureKind, width: number, depth: number): Fur
 }
 
 function snapFurnitureToWall(point: Point, item: PlanItem) {
-  const candidates = [
-    ...roomEdges.value.flatMap((edge) => edge.orientations.map((orientation) => ({
-      start: edge.start,
-      end: edge.end,
-      isPerimeter: true,
-      orientation,
-    }))),
-    ...wallSegments.value.map((wall) => ({ start: wall.start, end: wall.end, isPerimeter: false, orientation: 1 })),
-  ]
+  const candidates = roomEdges.value.flatMap((edge) => edge.orientations.map((orientation) => ({
+    start: edge.start,
+    end: edge.end,
+    orientation,
+  })))
   let nearest: { point: Point; rotation: number; distance: number } | null = null
 
   for (const edge of candidates) {
@@ -655,16 +650,12 @@ function snapFurnitureToWall(point: Point, item: PlanItem) {
     const projected = projectPointToSegment(point, edge.start, edge.end)
     let towardWall = { x: projected.x - point.x, y: projected.y - point.y }
     let distance = Math.hypot(towardWall.x, towardWall.y)
-    if (edge.isPerimeter) {
-      const inward = edge.orientation > 0 ? normal : { x: -normal.x, y: -normal.y }
-      const insideDistance = (point.x - projected.x) * inward.x + (point.y - projected.y) * inward.y
-      if (insideDistance < -0.001) continue
-      if (distance < 0.001) {
-        towardWall = { x: -inward.x, y: -inward.y }
-        distance = 0
-      }
-    } else if (distance < 0.001) {
-      towardWall = normal
+    const inward = edge.orientation > 0 ? normal : { x: -normal.x, y: -normal.y }
+    const insideDistance = (point.x - projected.x) * inward.x + (point.y - projected.y) * inward.y
+    if (insideDistance < -0.001) continue
+    if (distance < 0.001) {
+      towardWall = { x: -inward.x, y: -inward.y }
+      distance = 0
     }
 
     towardWall = { x: towardWall.x / (distance || 1), y: towardWall.y / (distance || 1) }
@@ -812,7 +803,6 @@ function isFurniturePlacementValid(center: Point, item: PlanItem, rotation = ite
 
   const allWalls = [
     ...roomEdges.value.map((edge) => ({ start: edge.start, end: edge.end })),
-    ...wallSegments.value,
   ]
   for (const wall of allWalls) {
     if (isPointInsidePolygon(wall.start, footprint) || isPointInsidePolygon(wall.end, footprint)) return false
@@ -915,7 +905,6 @@ function removeRoomCorner(corner: Point) {
       start,
       end: room[(index + 1) % room.length]!,
     }))),
-    ...wallSegments.value,
   ].flatMap(({ start, end }) => {
     if (samePoint(start, corner)) return [{ start: corner, end }]
     if (samePoint(end, corner)) return [{ start: corner, end: start }]
@@ -1591,7 +1580,6 @@ function cancelConfirmation() {
 function confirmNewFloorplan() {
   activeConfirmation.value = null
   items.value = []
-  wallSegments.value = []
   roomWallDimensions.value = {}
   measurements.value = []
   roomPoints.value = []
@@ -1628,7 +1616,6 @@ function finishRoomDrawing() {
   additionalRoomPoints.value = []
   roomNames.value = ['Room 1']
   items.value = []
-  wallSegments.value = []
   roomWallDimensions.value = {}
   measurements.value = []
   drawingRoomPoints.value = []
@@ -1665,7 +1652,6 @@ function finishRoomAddition(endPoint: Point) {
 
   const allExistingWalls = [
     ...roomEdges.value.map((edge) => ({ start: edge.start, end: edge.end })),
-    ...wallSegments.value,
   ]
   const traceCrossesWall = traceWithEnd.slice(0, -1).some((start, index) => {
     const end = traceWithEnd[index + 1]!
@@ -1811,7 +1797,6 @@ function exportPlan() {
     rooms: allRooms.value,
     roomNames: roomNames.value,
     items: items.value,
-    walls: wallSegments.value,
     roomWallDimensions: roomWallDimensions.value,
     measurements: measurements.value,
   }
@@ -1877,7 +1862,6 @@ function clearPlan() {
 function confirmResetPlan() {
   activeConfirmation.value = null
   items.value = []
-  wallSegments.value = []
   roomWallDimensions.value = {}
   measurements.value = []
   selectedId.value = null
@@ -2003,8 +1987,8 @@ onMounted(() => {
   const savedPlan = window.localStorage.getItem('floorwise-plan-v1') ?? window.localStorage.getItem('roomwise-plan-v1')
   if (savedPlan) {
     try {
-      const plan = JSON.parse(savedPlan) as { items?: Array<Partial<PlanItem> & Pick<PlanItem, 'id' | 'kind' | 'x' | 'y' | 'width' | 'depth' | 'height' | 'rotation'> & { rearSide?: unknown; doorOpen?: boolean; windowOpen?: boolean; windowOpenWings?: 'closed' | 'left' | 'right' | 'both' }>; walls?: Wall[]; roomWallDimensions?: Record<string, { depth?: number; height?: number }>; measurements?: Measurement[]; roomPoints?: Point[]; rooms?: Point[][]; roomNames?: string[] }
-      if (Array.isArray(plan.items) && Array.isArray(plan.walls) && Array.isArray(plan.measurements)) {
+      const plan = JSON.parse(savedPlan) as { items?: Array<Partial<PlanItem> & Pick<PlanItem, 'id' | 'kind' | 'x' | 'y' | 'width' | 'depth' | 'height' | 'rotation'> & { rearSide?: unknown; doorOpen?: boolean; windowOpen?: boolean; windowOpenWings?: 'closed' | 'left' | 'right' | 'both' }>; roomWallDimensions?: Record<string, { depth?: number; height?: number }>; measurements?: Measurement[]; roomPoints?: Point[]; rooms?: Point[][]; roomNames?: string[] }
+      if (Array.isArray(plan.items) && Array.isArray(plan.measurements)) {
         items.value = plan.items.map(({ rearSide: _rearSide, doorOpen, windowOpen, windowOpenWings, ...savedItem }) => {
           const legacyOpen = doorOpen ?? windowOpen
             ?? (windowOpenWings === undefined ? undefined : windowOpenWings !== 'closed')
@@ -2019,7 +2003,6 @@ onMounted(() => {
           item.rotation = normalizeRotation(item.rotation)
           return definition.normalizeSavedItem?.(item) ?? item
         })
-        wallSegments.value = plan.walls
         roomWallDimensions.value = Object.fromEntries(
           Object.entries(plan.roomWallDimensions ?? {})
             .filter(([, dimensions]) => Number.isFinite(dimensions.depth) && dimensions.depth! >= 1
@@ -2038,7 +2021,7 @@ onMounted(() => {
           typeof plan.roomNames?.[index] === 'string' && plan.roomNames[index]!.trim()
             ? plan.roomNames[index]!
             : `Room ${index + 1}`)
-        nextId.value = Math.max(10, ...items.value.map((item) => item.id + 1), ...wallSegments.value.map((wall) => wall.id + 1), ...measurements.value.map((measurement) => measurement.id + 1))
+        nextId.value = Math.max(10, ...items.value.map((item) => item.id + 1), ...measurements.value.map((measurement) => measurement.id + 1))
       } else {
         console.warn(t('Saved room plan has an invalid structure and was not restored.'))
       }
@@ -2058,11 +2041,10 @@ onBeforeUnmount(() => {
   window.removeEventListener('blur', onWindowBlur)
   stopKeyboardMovement()
 })
-watch([items, wallSegments, roomWallDimensions, measurements, roomPoints, additionalRoomPoints, roomNames], () => {
+watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints, roomNames], () => {
   if (import.meta.client) {
     window.localStorage.setItem('floorwise-plan-v1', JSON.stringify({
       items: items.value,
-      walls: wallSegments.value,
       roomWallDimensions: roomWallDimensions.value,
       measurements: measurements.value,
       roomPoints: roomPoints.value,
@@ -2203,7 +2185,6 @@ watch([items, wallSegments, roomWallDimensions, measurements, roomPoints, additi
             :room-names="roomNames"
             :room-display-name="roomDisplayName"
             :room-area-for="roomAreaFor"
-            :wall-segments="wallSegments"
             :room-wall-dimensions="roomWallDimensions"
             :show-custom-measurements="showCustomMeasurements"
             :measurements="measurements"
@@ -2249,7 +2230,6 @@ watch([items, wallSegments, roomWallDimensions, measurements, roomPoints, additi
           <ClientOnly v-else>
             <RoomScene3D
               :items="items"
-              :walls="wallSegments"
               :room-wall-dimensions="roomWallDimensions"
               :rooms="allRooms"
               :room-width="roomBounds.width"
@@ -2302,7 +2282,7 @@ watch([items, wallSegments, roomWallDimensions, measurements, roomPoints, additi
       :open="activeConfirmation !== null"
       :eyebrow="t(activeConfirmation === 'reset-plan' ? 'RESET PLAN' : 'NEW FLOORPLAN')"
       :title="t(activeConfirmation === 'reset-plan' ? 'Reset plan?' : 'Start a new floorplan?')"
-      :description="t(activeConfirmation === 'reset-plan' ? 'This will remove all placed items, walls, and measurements.' : 'Your current floorplan, including its room outline, furniture, walls, and measurements, will be cleared.')"
+      :description="t(activeConfirmation === 'reset-plan' ? 'This will remove all placed items and measurements.' : 'Your current floorplan, including its room outline, furniture, walls, and measurements, will be cleared.')"
       :cancel-label="t('Cancel')"
       :confirm-label="t(activeConfirmation === 'reset-plan' ? 'Reset plan' : 'Clear floorplan')"
       @cancel="cancelConfirmation"

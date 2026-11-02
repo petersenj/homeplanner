@@ -1,6 +1,5 @@
 export type Point = { x: number; y: number }
 export type IdentifiedSegment = { id: number; start: Point; end: Point }
-export type Wall = IdentifiedSegment
 export type Measurement = IdentifiedSegment
 export type RoomEdge = {
   id: string

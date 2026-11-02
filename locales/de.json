@@ -148,7 +148,7 @@
     "Clear floorplan": "Grundriss löschen",
     "RESET PLAN": "PLAN ZURÜCKSETZEN",
     "Reset plan?": "Plan zurücksetzen?",
-    "This will remove all placed items, walls, and measurements.": "Dadurch werden alle platzierten Elemente, Wände und Messungen entfernt."
+    "This will remove all placed items and measurements.": "Dadurch werden alle platzierten Elemente und Messungen entfernt."
   },
   "tutorial": {
     "App tutorial": "App-Tutorial",

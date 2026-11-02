@@ -4,14 +4,13 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { getCatalogItem } from '~/catalog'
 import { addLegs, box } from '~/catalog/scene'
 import type { CatalogItem } from '~/catalog/types'
-import type { CameraSnapshot, CameraVector, Point, Wall } from '~/types/planner'
+import type { CameraSnapshot, CameraVector, Point } from '~/types/planner'
 const { language, t } = useAppLanguage()
 
 type RoomItem = CatalogItem
 
 const props = defineProps<{
   items: RoomItem[]
-  walls: Wall[]
   roomWallDimensions: Record<string, { depth: number; height: number }>
   rooms: Point[][]
   roomWidth: number
@@ -277,16 +276,6 @@ function addRoom() {
   }
   }
 
-  for (const wall of props.walls) {
-    const start = roomPosition(wall.start.x, wall.start.y)
-    const end = roomPosition(wall.end.x, wall.end.y)
-    const dx = end.x - start.x
-    const dz = end.z - start.z
-    const length = Math.hypot(dx, dz)
-    if (length < 0.02) continue
-    const wallMesh = box(content, [length, 1.55, wallThickness], [(start.x + end.x) / 2, 0.775, (start.z + end.z) / 2], '#d4cdc2')
-    wallMesh.rotation.y = -Math.atan2(dz, dx)
-  }
 }
 
 function addFurniture(item: RoomItem) {
@@ -653,7 +642,6 @@ function onControlsChange() {
 
 watch(() => [
   props.items.map((item) => [item.id, item.kind, item.section, item.wallDetailCategory, item.x, item.y, item.width, item.depth, item.height, item.floorOffset, item.name, item.color, item.open]),
-  props.walls,
   props.roomWallDimensions,
   props.rooms,
   props.selectedId,

@@ -1,5 +1,109 @@
 [
   {
+    "date": "2026-11-01",
+    "subject": "changed open/close radios to be switch component"
+  },
+  {
+    "date": "2026-11-01",
+    "subject": "fixed 2d visuals for doors and windows"
+  },
+  {
+    "date": "2026-11-01",
+    "subject": "improve 3d camera rotation suppressing click"
+  },
+  {
+    "date": "2026-11-01",
+    "subject": "add drag n drop for catalog items in 2d mode"
+  },
+  {
+    "date": "2026-11-01",
+    "subject": "add delete key to remove items"
+  },
+  {
+    "date": "2026-11-01",
+    "subject": "add single wing window"
+  },
+  {
+    "date": "2026-11-01",
+    "subject": "simplify opening logic for doors and windows, make it later usale for other items as well"
+  },
+  {
+    "date": "2026-11-01",
+    "subject": "fix window-details only rotate 180degrees and fix 2d window opening visual"
+  },
+  {
+    "date": "2026-11-01",
+    "subject": "add openings for doors and windows - also remove default window in a new room"
+  },
+  {
+    "date": "2026-11-01",
+    "subject": "added opening states for windows and doors"
+  },
+  {
+    "date": "2026-11-01",
+    "subject": "add coloring tools for carpet and cube"
+  },
+  {
+    "date": "2026-11-01",
+    "subject": "remove click handler from camera facing wall"
+  },
+  {
+    "date": "2026-11-01",
+    "subject": "added wall modifications and dragging"
+  },
+  {
+    "date": "2026-11-01",
+    "subject": "removed unneccessary item decals from 2d and 3d visual"
+  },
+  {
+    "date": "2026-11-01",
+    "subject": "restore last cameraposition when switching between 2d and 3d"
+  },
+  {
+    "date": "2026-11-01",
+    "subject": "add correct visible order top down when in 2d mode"
+  },
+  {
+    "date": "2026-11-01",
+    "subject": "moved 2D logic into its own component"
+  },
+  {
+    "date": "2026-11-01",
+    "subject": "add smooth rotation animation in 2d and 3d"
+  },
+  {
+    "date": "2026-11-01",
+    "subject": "sort furniture and objects by localised label"
+  },
+  {
+    "date": "2026-11-01",
+    "subject": "show measurements while dragging with keyboard"
+  },
+  {
+    "date": "2026-11-01",
+    "subject": "improve rotation handling"
+  },
+  {
+    "date": "2026-11-01",
+    "subject": "add carpet furniture item"
+  },
+  {
+    "date": "2026-11-01",
+    "subject": "add item translation to its own file"
+  },
+  {
+    "date": "2026-11-01",
+    "subject": "move furniture and objects into folder structure to be easily expandable"
+  },
+  {
+    "date": "2026-11-01",
+    "subject": "update changelog"
+  },
+  {
+    "date": "2026-11-01",
+    "subject": "add sass, start moving styles into components, also restructure app to have components instead one huge file"
+  },
+  {
     "date": "2026-10-29",
     "subject": "make grid use variable size prop and expand canvas"
   },
@@ -14,65 +118,5 @@
   {
     "date": "2026-10-26",
     "subject": "add room resizing and adding corners"
-  },
-  {
-    "date": "2026-10-25",
-    "subject": "added changelog"
-  },
-  {
-    "date": "2026-10-25",
-    "subject": "add responsive sidepanel"
-  },
-  {
-    "date": "2026-10-25",
-    "subject": "add sidebar minimizing and delete icons to room objects in list"
-  },
-  {
-    "date": "2026-10-25",
-    "subject": "added tutorial"
-  },
-  {
-    "date": "2026-10-25",
-    "subject": "renamed export json name"
-  },
-  {
-    "date": "2026-10-25",
-    "subject": "improved mouse+keyboard shortcuts"
-  },
-  {
-    "date": "2026-10-25",
-    "subject": "restart room drawing after it was cancelled on empty floor plan"
-  },
-  {
-    "date": "2026-10-25",
-    "subject": "added multiple language support"
-  },
-  {
-    "date": "2026-10-25",
-    "subject": "rename app and animate 3d view from top-down to default angle"
-  },
-  {
-    "date": "2026-10-25",
-    "subject": "animate 3d view and add top-down view"
-  },
-  {
-    "date": "2026-10-25",
-    "subject": "updated floorplan list, add distance from floor, improved item category list etc"
-  },
-  {
-    "date": "2026-10-25",
-    "subject": "add confirmation to reset floorplan and add new rooms starting with initial room"
-  },
-  {
-    "date": "2026-10-25",
-    "subject": "add drawable room, hide camera facing walls"
-  },
-  {
-    "date": "2026-10-24",
-    "subject": "added threejs 3d view"
-  },
-  {
-    "date": "2026-10-24",
-    "subject": "initial commit with homeplanner basic app"
   }
 ]

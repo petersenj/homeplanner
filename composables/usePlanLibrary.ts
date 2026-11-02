@@ -11,6 +11,11 @@ import type { SavedPlan } from '~/utils/planLibrary'
 import type { Point } from '~/types/planner'
 
 type PlanLibraryDialog = 'save-as' | 'open' | 'delete-plan' | null
+type SaveCallbacks = {
+  onSaved?: () => void
+  onCancelled?: () => void
+  onFailed?: () => void
+}
 
 export function usePlanLibrary(options: {
   getPlan: () => PlanFileExport
@@ -27,6 +32,7 @@ export function usePlanLibrary(options: {
   const selectedPlanId = ref<string | null>(null)
   const pendingDeletePlanId = ref<string | null>(null)
   const operationError = ref('')
+  let pendingSaveCallbacks: SaveCallbacks | null = null
   let isMounted = false
 
   function reportError(key: string, error: unknown) {
@@ -64,9 +70,10 @@ export function usePlanLibrary(options: {
     }
   })
 
-  function requestSaveAs() {
+  function requestSaveAs(callbacks: SaveCallbacks | null = null) {
     operationError.value = ''
     saveAsName.value = options.getPlanName()
+    pendingSaveCallbacks = callbacks
     dialog.value = 'save-as'
   }
 
@@ -90,22 +97,26 @@ export function usePlanLibrary(options: {
       options.setPlanName(name)
       operationError.value = ''
       dialog.value = null
+      const callbacks = pendingSaveCallbacks
+      pendingSaveCallbacks = null
+      callbacks?.onSaved?.()
     } catch (error) {
       reportError('Could not save this plan. Check that browser storage is available.', error)
     }
   }
 
-  function savePlan() {
+  function savePlan(callbacks?: SaveCallbacks) {
     operationError.value = ''
     const activePlan = savedPlans.value.find((plan) => plan.id === activePlanId.value)
     if (!activePlan) {
-      requestSaveAs()
+      requestSaveAs(callbacks ?? null)
       return
     }
 
     const name = options.getPlanName().trim()
     if (!name) {
       operationError.value = options.t('Enter a name for this plan.')
+      callbacks?.onFailed?.()
       return
     }
     try {
@@ -114,8 +125,10 @@ export function usePlanLibrary(options: {
         : plan))
       window.localStorage.setItem(ACTIVE_PLAN_NAME_STORAGE_KEY, name)
       operationError.value = ''
+      callbacks?.onSaved?.()
     } catch (error) {
       reportError('Could not save this plan. Check that browser storage is available.', error)
+      callbacks?.onFailed?.()
     }
   }
 
@@ -126,8 +139,14 @@ export function usePlanLibrary(options: {
   }
 
   function markUnsaved() {
-    window.localStorage.removeItem(ACTIVE_PLAN_ID_STORAGE_KEY)
-    activePlanId.value = null
+    try {
+      window.localStorage.removeItem(ACTIVE_PLAN_ID_STORAGE_KEY)
+      activePlanId.value = null
+      return true
+    } catch (error) {
+      reportError('Could not update the active saved plan.', error)
+      return false
+    }
   }
 
   function openSelectedPlan() {
@@ -178,6 +197,9 @@ export function usePlanLibrary(options: {
   function cancelDialog() {
     dialog.value = null
     pendingDeletePlanId.value = null
+    const callbacks = pendingSaveCallbacks
+    pendingSaveCallbacks = null
+    callbacks?.onCancelled?.()
   }
 
   return {

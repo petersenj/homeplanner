@@ -59,7 +59,12 @@ const roomDrawingError = ref('')
 const canvasActionError = ref('')
 const roomCornerDrag = ref<RoomCornerDrag | null>(null)
 const roomWallDrag = ref<RoomWallDrag | null>(null)
-const activeConfirmation = ref<'new-floorplan' | 'reset-plan' | null>(null)
+const activeConfirmation = ref<'reset-plan' | null>(null)
+const newFloorplanConfirmationOpen = ref(false)
+const planLibraryActions = ref<{
+  markCurrentPlanUnsaved: () => boolean
+  saveBeforeNewFloorplan: () => void
+} | null>(null)
 const projectMenuOpen = ref(false)
 const moreMenuOpen = ref(false)
 const changelogOpen = ref(false)
@@ -1572,8 +1577,9 @@ function stopDragging() {
 }
 
 function beginRoomDrawing() {
-  projectMenuOpen.value = false
-  activeConfirmation.value = 'new-floorplan'
+  sidebarOpen.value = true
+  projectMenuOpen.value = true
+  newFloorplanConfirmationOpen.value = true
 }
 
 function cancelConfirmation() {
@@ -1581,6 +1587,13 @@ function cancelConfirmation() {
 }
 
 function confirmNewFloorplan() {
+  if (!planLibraryActions.value?.markCurrentPlanUnsaved()) {
+    newFloorplanConfirmationOpen.value = true
+    return
+  }
+  newFloorplanConfirmationOpen.value = false
+  projectMenuOpen.value = false
+  planName.value = 'My apartment'
   activeConfirmation.value = null
   items.value = []
   roomWallDimensions.value = {}
@@ -1882,8 +1895,21 @@ function confirmResetPlan() {
 }
 
 function confirmActiveAction() {
-  if (activeConfirmation.value === 'new-floorplan') confirmNewFloorplan()
-  else if (activeConfirmation.value === 'reset-plan') confirmResetPlan()
+  if (activeConfirmation.value === 'reset-plan') confirmResetPlan()
+}
+
+function saveBeforeStartingNewFloorplan() {
+  newFloorplanConfirmationOpen.value = false
+  planLibraryActions.value?.saveBeforeNewFloorplan()
+}
+
+function resumeNewFloorplanPrompt() {
+  newFloorplanConfirmationOpen.value = true
+}
+
+function cancelNewFloorplanPrompt() {
+  newFloorplanConfirmationOpen.value = false
+  projectMenuOpen.value = false
 }
 
 function isEditableKeyboardTarget(target: EventTarget | null) {
@@ -2086,16 +2112,21 @@ watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints
           <button class="project-select" :aria-expanded="projectMenuOpen" aria-haspopup="menu" @click="projectMenuOpen = !projectMenuOpen">
             <span class="project-avatar">M</span>
             <span class="project-copy"><input v-model="planName" class="plan-name-input" maxlength="100" :aria-label="t('Plan name')" :title="t('Plan name')" :placeholder="planName"/><small>{{ t('Personal floorplan') }}</small></span>
-            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
-          <div v-if="projectMenuOpen" class="project-menu">
-                        <button @click="beginRoomDrawing">{{ t('Start a new floorplan') }}</button>
+            <svg class="project-arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
+          </button>
+          <div v-show="projectMenuOpen" class="project-menu">
+            <button @click="beginRoomDrawing">{{ t('Start a new floorplan') }}</button>
 
             <HomePlannerImportExport
+              ref="planLibraryActions"
               :t="t"
               :plan="exportPlanData"
               :validate-room-layout="isValidRoomLayout"
               v-model:plan-name="planName"
               v-model:imported-plan="importedPlanModel"
+              @saved-before-new="confirmNewFloorplan"
+              @save-before-new-cancelled="resumeNewFloorplanPrompt"
+              @save-before-new-failed="resumeNewFloorplanPrompt"
             />
           </div>
         </div>
@@ -2303,15 +2334,30 @@ watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints
       <div v-if="activeTool === 'cube' && view === '2d'" class="placement-tip">{{ t('Click anywhere in the room to place your cube') }} <button @click="selectTool('select')">{{ t('Cancel') }}</button></div>
     </section>
     <AppConfirmationDialog
-      :open="activeConfirmation !== null"
-      :eyebrow="t(activeConfirmation === 'reset-plan' ? 'RESET PLAN' : 'NEW FLOORPLAN')"
-      :title="t(activeConfirmation === 'reset-plan' ? 'Reset plan?' : 'Start a new floorplan?')"
-      :description="t(activeConfirmation === 'reset-plan' ? 'This will remove all placed items and measurements.' : 'Your current floorplan, including its room outline, furniture, walls, and measurements, will be cleared.')"
+      :open="activeConfirmation === 'reset-plan'"
+      :eyebrow="t('RESET PLAN')"
+      :title="t('Reset plan?')"
+      :description="t('This will remove all placed items and measurements.')"
       :cancel-label="t('Cancel')"
-      :confirm-label="t(activeConfirmation === 'reset-plan' ? 'Reset plan' : 'Clear floorplan')"
+      :confirm-label="t('Reset plan')"
       @cancel="cancelConfirmation"
       @confirm="confirmActiveAction"
     />
+    <AppConfirmationDialog
+      :open="newFloorplanConfirmationOpen"
+      :eyebrow="t('NEW FLOORPLAN')"
+      :title="t('Save this floorplan before starting a new one?')"
+      :description="t('Save your current floorplan before starting a new one. If you continue without saving, it will be discarded.')"
+      @cancel="cancelNewFloorplanPrompt"
+    >
+      <template #actions>
+        <div class="new-floorplan-actions">
+          <button class="new-floorplan-cancel" @click="cancelNewFloorplanPrompt">{{ t('Cancel') }}</button>
+          <button class="new-floorplan-discard" @click="confirmNewFloorplan">{{ t("Don't save") }}</button>
+          <button class="new-floorplan-save" @click="saveBeforeStartingNewFloorplan">{{ t('Save') }}</button>
+        </div>
+      </template>
+    </AppConfirmationDialog>
     <AppChangelog :open="changelogOpen" @update:open="changelogOpen = $event" />
     <AppTutorial
       ref="appTutorial"
@@ -2320,7 +2366,7 @@ watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints
       @select-demo-item="selectTutorialDemoItem"
       @set-project-menu-open="projectMenuOpen = $event"
       @clear-selection="selectedId = null"
-      @create-own-floorplan="confirmNewFloorplan"
+      @create-own-floorplan="beginRoomDrawing"
     />
   </main>
 </template>
@@ -2369,11 +2415,16 @@ button { color: inherit; cursor: pointer; }
 .project-menu { position: absolute; z-index: 10; top: calc(100% - 8px); left: 19px; right: 19px; padding: 5px; border: 1px solid #e8e7e0; border-radius: 7px; background: #fff; box-shadow: 0 5px 16px #34322814; }
 .project-menu > button { width: 100%; padding: 9px 10px; border: 0; border-radius: 4px; background: transparent; color: #595d53; text-align: left; font-size: 10px; }
 .project-menu > button:hover { background: #f3f5f1; color: #526c59; }
+.new-floorplan-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
+.new-floorplan-actions button { min-height: 34px; padding: 0 13px; border: 1px solid #e4e5df; border-radius: 6px; background: #fff; color: #686d64; font-size: 11px; }
+.new-floorplan-actions .new-floorplan-discard { border-color: #e8d4cd; color: #875e50; }
+.new-floorplan-actions .new-floorplan-save { border-color: #668371; background: #668371; color: #fff; font-weight: 600; }
 .project-avatar { display: grid; place-items: center; width: 35px; height: 35px; flex-shrink:0;border-radius: 10px; color: #58715e; background: #edf1e9; font: 700 14px 'Manrope', sans-serif; }
 .project-copy, .sidebar-bottom > span { display: grid; gap: 3px; margin-left: 10px; }
 .project-copy { display: flex; flex-direction: column; }
 .project-copy strong, .sidebar-bottom strong { font-size: 12px; font-weight: 600; }
 .project-copy small, .sidebar-bottom small { font-size: 10px; color: #999b93; }
+.project-arrow{flex-shrink:0;}
 .project-select > svg { width: 15px; margin-left: auto; fill: none; stroke: #8e9088; stroke-width: 1.5; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 11px; }
 .icon-button { border: 0; background: transparent; color: #85877f; }
@@ -2382,6 +2433,7 @@ button { color: inherit; cursor: pointer; }
 .room-entry { margin-bottom: 4px; }
 .active-room { background: #f1f4ef; color: #526c59; font-weight: 600; }
 .room-name-input, .plan-name-input { width: auto; flex: 1; padding: 3px 0; border: 0; outline: none; background: transparent; color: inherit; font: inherit; }
+.room-name-input { width: 0; min-width:0;}
 .room-name-input:focus, .plan-name-input:focus { box-shadow: 0 1px 0 #8ea18d; }
 .room-name-input::placeholder, .plan-name-input::placeholder { color: #8a9485; }
 .room-item-count { min-width: 17px; height: 17px; display: grid; place-items: center; border-radius: 5px; background: #e6ece3; color: #697d68; font-size: 9px; font-weight: 600; }

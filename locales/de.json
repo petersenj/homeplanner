@@ -166,6 +166,9 @@
     "Start a new floorplan?": "Neuen Grundriss beginnen?",
     "Your current floorplan, including its room outline, furniture, walls, and measurements, will be cleared.": "Dein aktueller Grundriss mit Räumen, Möbeln, Wänden und Messungen wird gelöscht.",
     "Clear floorplan": "Grundriss löschen",
+    "Save this floorplan before starting a new one?": "Diesen Grundriss vor dem Start eines neuen Grundrisses speichern?",
+    "Save your current floorplan before starting a new one. If you continue without saving, it will be discarded.": "Speichere deinen aktuellen Grundriss, bevor du einen neuen startest. Wenn du ohne Speichern fortfährst, wird er verworfen.",
+    "Don't save": "Nicht speichern",
     "RESET PLAN": "PLAN ZURÜCKSETZEN",
     "Reset plan?": "Plan zurücksetzen?",
     "This will remove all placed items and measurements.": "Dadurch werden alle platzierten Elemente und Messungen entfernt.",
@@ -232,6 +235,7 @@
   },
   "errors": {
     "Could not delete this saved plan.": "Der gespeicherte Plan konnte nicht gelöscht werden.",
+    "Could not update the active saved plan.": "Der aktive gespeicherte Plan konnte nicht aktualisiert werden.",
     "Enter a name for this plan.": "Gib einen Namen für diesen Plan ein.",
     "Could not load saved plans.": "Gespeicherte Pläne konnten nicht geladen werden.",
     "Could not save the plan name.": "Der Planname konnte nicht gespeichert werden.",

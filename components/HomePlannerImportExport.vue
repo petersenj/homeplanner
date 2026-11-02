@@ -10,6 +10,11 @@ const props = defineProps<{
   plan: PlanFileExport
   validateRoomLayout: (rooms: Point[][]) => boolean
 }>()
+const emit = defineEmits<{
+  'saved-before-new': []
+  'save-before-new-cancelled': []
+  'save-before-new-failed': []
+}>()
 
 const importedPlan = defineModel<ImportedPlan | null>('importedPlan')
 const planName = defineModel<string>('planName', { default: 'My apartment' })
@@ -106,19 +111,33 @@ function cancelImport() {
 
 function importPlan() {
   if (!pendingPlan.value) return
+  if (!markUnsaved()) return
   importedPlan.value = pendingPlan.value
   planName.value = pendingPlanName.value
-  markUnsaved()
   cancelImport()
   importError.value = ''
 }
+
+function saveBeforeNewFloorplan() {
+  savePlan({
+    onSaved: () => emit('saved-before-new'),
+    onCancelled: () => emit('save-before-new-cancelled'),
+    onFailed: () => emit('save-before-new-failed'),
+  })
+}
+
+function markCurrentPlanUnsaved() {
+  return markUnsaved()
+}
+
+defineExpose({ markCurrentPlanUnsaved, saveBeforeNewFloorplan })
 </script>
 
 <template>
       <button type="button" @click="requestOpen">{{ t('Open') }}</button>
       ---
-    <button type="button" @click="savePlan">{{ t('Save') }}</button>
-    <button type="button" @click="requestSaveAs">{{ t('Save as') }}</button>
+    <button type="button" @click="savePlan()">{{ t('Save') }}</button>
+    <button type="button" @click="requestSaveAs()">{{ t('Save as') }}</button>
     ---
     <button type="button" @click="requestImport">{{ t('Import JSON') }}</button>
     <button type="button" @click="exportPlan">{{ t('Export JSON') }}</button>

@@ -43,10 +43,12 @@ const emit = defineEmits<{
       </div>
       <p v-if="description" id="confirmation-dialog-description">{{ description }}</p>
       <slot />
-      <div v-if="cancelLabel && confirmLabel" class="confirmation-actions">
-        <button class="confirmation-cancel" @click="emit('cancel')">{{ cancelLabel }}</button>
-        <button class="confirmation-accept" @click="emit('confirm')">{{ confirmLabel }}</button>
-      </div>
+      <slot name="actions">
+        <div v-if="cancelLabel && confirmLabel" class="confirmation-actions">
+          <button class="confirmation-cancel" @click="emit('cancel')">{{ cancelLabel }}</button>
+          <button class="confirmation-accept" @click="emit('confirm')">{{ confirmLabel }}</button>
+        </div>
+      </slot>
     </section>
   </div>
 </template>

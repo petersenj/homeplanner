@@ -52,6 +52,13 @@ const {
 })
 const pendingDeletePlan = computed(() =>
   savedPlans.value.find((plan) => plan.id === pendingDeletePlanId.value) ?? null)
+const sortedSavedPlans = computed(() => [...savedPlans.value].sort((first, second) => {
+  const firstTime = Date.parse(first.updatedAt)
+  const secondTime = Date.parse(second.updatedAt)
+  if (!Number.isFinite(firstTime)) return Number.isFinite(secondTime) ? 1 : 0
+  if (!Number.isFinite(secondTime)) return -1
+  return secondTime - firstTime
+}))
 
 function exportPlan() {
   downloadPlanFile({ ...props.plan, name: planName.value }, planName.value)
@@ -193,10 +200,10 @@ defineExpose({ markCurrentPlanUnsaved, saveBeforeNewFloorplan })
     @confirm="openSelectedPlan"
   >
     <p v-if="!savedPlans.length" class="empty-plan-library">{{ t('No saved plans yet.') }}</p>
-    <div v-for="plan in savedPlans" :key="plan.id" class="saved-plan-option">
+    <div v-for="plan in sortedSavedPlans" :key="plan.id" class="saved-plan-option">
       <label>
         <input v-model="selectedPlanId" type="radio" name="saved-plan" :value="plan.id">
-        <span><strong>{{ plan.name }}</strong><small>{{ new Date(plan.updatedAt).toLocaleDateString() }}</small></span>
+        <span><strong>{{ plan.name }}</strong><small>{{ new Date(plan.updatedAt).toLocaleString() }}</small></span>
       </label>
       <button
         class="delete-saved-plan"

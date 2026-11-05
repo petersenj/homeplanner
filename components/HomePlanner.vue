@@ -2374,7 +2374,7 @@ watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints
 
 <style lang="scss">
 :root {
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'Onest', sans-serif;
   color: #343731;
   background: #f7f6f2;
   font-synthesis: none;
@@ -2406,7 +2406,7 @@ button { color: inherit; cursor: pointer; }
 .brand-mark { width: 34px; height: 34px; display: grid; place-items: center; background: #e9efe9; border-radius: 11px; }
 .brand-mark svg { width: 23px; fill: none; stroke: #688472; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
 .brand-period { color: #77947e; }
-.brand small { display: block; margin-top: 1px; color: #9a9c94; font: 600 8px 'DM Sans', sans-serif; letter-spacing: 1.13px; }
+.brand small { display: block; margin-top: 1px; color: #9a9c94; font: 600 8px 'Onest', sans-serif; letter-spacing: 1.13px; }
 .sidebar-scroll { min-height: 0; flex: 1; overflow-y: auto; }
 .sidebar-section { padding: 20px 19px; border-top: 1px solid #f0efeb; }
 .project-section { position: relative; border-top: 0; padding-top: 12px; padding-bottom: 17px; }
@@ -2573,12 +2573,12 @@ button { color: inherit; cursor: pointer; }
 .room-corner-handle:hover .room-corner-point, .room-corner-handle.is-dragging .room-corner-point { fill: #dcebe0; }
 .measurement-delete-control { cursor: pointer; }
 .measurement-delete-control:focus-visible { outline: none; filter: drop-shadow(0 0 2px #668774); }
-.room-dimensions text, .measure-label { fill: #77796f; font: 500 10px 'DM Sans', sans-serif; }
+.room-dimensions text, .measure-label { fill: #77796f; font: 500 10px 'Onest', sans-serif; }
 .room-edge-dimensions text { fill: #70746a; font-size: 9px; paint-order: stroke; stroke: #f7f6f2; stroke-width: 5px; stroke-linejoin: round; }
 .measure-label { fill: #557760; font-size: 9px; }
-.room-caption { fill: #9b9a91; font: 600 9px 'DM Sans', sans-serif; letter-spacing: 1.2px; }
-.room-name-label { fill: #706f66; font: 600 13px 'DM Sans', sans-serif; paint-order: stroke; stroke: #f5eee4; stroke-width: 4px; stroke-linejoin: round; }
-.room-area-label { fill: #96948a; font: 500 11px 'DM Sans', sans-serif; paint-order: stroke; stroke: #f5eee4; stroke-width: 3px; stroke-linejoin: round; }
+.room-caption { fill: #9b9a91; font: 600 9px 'Onest', sans-serif; letter-spacing: 1.2px; }
+.room-name-label { fill: #706f66; font: 600 13px 'Onest', sans-serif; paint-order: stroke; stroke: #f5eee4; stroke-width: 4px; stroke-linejoin: round; }
+.room-area-label { fill: #96948a; font: 500 11px 'Onest', sans-serif; paint-order: stroke; stroke: #f5eee4; stroke-width: 3px; stroke-linejoin: round; }
 .pending-point circle:first-child { fill: #668371; }.pending-point circle:last-child { fill: none; stroke: #668371; stroke-width: 1.5; opacity: .55; }
 .canvas-compass { position: absolute; right: 18px; top: 18px; width: 31px; height: 49px; display: grid; justify-items: center; align-content: center; gap: 1px; border: 1px solid #e8e6df; border-radius: 7px; background: #ffffffd9; color: #777970; font-size: 8px; }
 .canvas-compass svg { width: 13px; height: 20px; }

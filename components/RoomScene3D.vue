@@ -3,8 +3,12 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { getCatalogItem } from '~/catalog'
 import { addLegs, box } from '~/catalog/scene'
+import { isEgoCameraPointInsideRooms } from '~/utils/egoCameraPlan'
+import { createEgoCameraModel, setEgoCameraModelSelected } from '~/utils/roomSceneEgoCamera'
+import { RoomSceneFirstPersonController } from '~/utils/roomSceneFirstPerson'
+import { pickRoomSceneSelection } from '~/utils/roomSceneSelection'
 import type { CatalogItem } from '~/catalog/types'
-import type { CameraSnapshot, CameraVector, Point } from '~/types/planner'
+import type { CameraSnapshot, CameraVector, EgoCamera, Point } from '~/types/planner'
 const { language, t } = useAppLanguage()
 
 type RoomItem = CatalogItem
@@ -20,31 +24,43 @@ const props = defineProps<{
   selectedId: number | null
   selectedWallId: string | null
   cameraSnapshot: CameraSnapshot | null
+  egoCamera: EgoCamera
+  isEgoCameraSelected: boolean
 }>()
 const emit = defineEmits<{
   select: [id: number | null]
   wallSelect: [id: string | null]
   cameraChange: [snapshot: CameraSnapshot]
+  egoCameraChange: [camera: EgoCamera]
+  egoCameraSelect: [selected: boolean]
 }>()
 const host = ref<HTMLDivElement | null>(null)
 const canvas = ref<HTMLCanvasElement | null>(null)
 const isReady = ref(false)
 const sceneError = ref('')
 const isFullscreen = ref(false)
+const firstPersonError = ref('')
 const showCameraFacingWalls = ref(true)
 const isTopDownView = ref(true)
+const isFirstPersonMode = ref(false)
 const selectedItem = computed(() => props.items.find((item) => item.id === props.selectedId) ?? null)
 let renderer: THREE.WebGLRenderer | undefined
 let camera: THREE.PerspectiveCamera | undefined
 let controls: OrbitControls | undefined
 let scene: THREE.Scene | undefined
 let content: THREE.Group | undefined
+let egoCameraGroup: THREE.Group | undefined
 let resizeObserver: ResizeObserver | undefined
 let animationFrame = 0
 let raycaster: THREE.Raycaster | undefined
-let pointer: THREE.Vector2 | undefined
-let pointerDown: { id: number; x: number; y: number } | null = null
+let firstPersonController: RoomSceneFirstPersonController | undefined
+let previousRenderTime = 0
+let lastEgoCameraEmitTime = 0
+let pointerLockRequestId = 0
+let pointerDown: { id: number; x: number; y: number; egoCamera: boolean; controlsEnabled: boolean } | null = null
 let pointerDragged = false
+let pointerHitEgoCamera = false
+const egoCameraDragOffset = new THREE.Vector3()
 let pickableObjects: THREE.Object3D[] = []
 const itemGroups = new Map<number, THREE.Group>()
 const rotationAnimations = new Map<number, { startedAt: number; startRotation: number; endRotation: number; targetRotation: number }>()
@@ -59,6 +75,14 @@ let cameraTransition: {
   startQuaternion: THREE.Quaternion
   endQuaternion: THREE.Quaternion
   endUp: THREE.Vector3
+} | null = null
+let firstPersonTransition: {
+  startedAt: number
+  duration: number
+  startPosition: THREE.Vector3
+  endPosition: THREE.Vector3
+  startQuaternion: THREE.Quaternion
+  endQuaternion: THREE.Quaternion
 } | null = null
 
 const roomWidthM = computed(() => props.roomWidth / 100)
@@ -333,6 +357,21 @@ function updateScene() {
   }
 }
 
+function updateEgoCameraModel() {
+  if (!egoCameraGroup) return
+  egoCameraGroup.visible = props.rooms.length > 0 && !isFirstPersonMode.value
+  setEgoCameraModelPose(props.egoCamera)
+}
+
+function setEgoCameraModelPose(egoCamera: EgoCamera) {
+  if (!egoCameraGroup) return
+  egoCameraGroup.visible = props.rooms.length > 0 && !isFirstPersonMode.value
+  const position = roomPosition(egoCamera.x, egoCamera.y)
+  egoCameraGroup.position.set(position.x, 0, position.z)
+  egoCameraGroup.rotation.y = -egoCamera.rotation * Math.PI / 180
+  setEgoCameraModelSelected(egoCameraGroup, props.isEgoCameraSelected)
+}
+
 function updateItemRotations() {
   const reduceMotion = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
   for (const item of props.items) {
@@ -405,7 +444,28 @@ function resize() {
 function render(timestamp: number) {
   if (renderer && scene && camera && controls) {
     animateItemRotations(timestamp)
-    if (cameraTransition) {
+    if (isFirstPersonMode.value && firstPersonTransition) {
+      const transition = firstPersonTransition
+      const progress = Math.min((timestamp - transition.startedAt) / transition.duration, 1)
+      const eased = 1 - (1 - progress) ** 3
+      camera.position.lerpVectors(transition.startPosition, transition.endPosition, eased)
+      camera.quaternion.slerpQuaternions(transition.startQuaternion, transition.endQuaternion, eased)
+      camera.updateMatrixWorld()
+      if (progress >= 1) {
+        camera.position.copy(transition.endPosition)
+        firstPersonController?.activate()
+        firstPersonTransition = null
+        previousRenderTime = timestamp
+      }
+    } else if (isFirstPersonMode.value) {
+      const deltaSeconds = previousRenderTime
+        ? Math.min((timestamp - previousRenderTime) / 1000, 0.05)
+        : 0
+      previousRenderTime = timestamp
+      if (firstPersonController?.update(deltaSeconds, roomWidthM.value, roomDepthM.value)) {
+        syncEgoCameraFromFirstPerson()
+      }
+    } else if (cameraTransition) {
       const transition = cameraTransition
       const progress = Math.min((timestamp - transition.startedAt) / transition.duration, 1)
       const eased = progress < 0.5
@@ -435,43 +495,56 @@ function render(timestamp: number) {
 function onCanvasClick(event: MouseEvent) {
   if (pointerDragged) {
     pointerDragged = false
+    pointerHitEgoCamera = false
     return
   }
-  if (!canvas.value || !camera || !scene || !raycaster || !pointer) return
+  if (pointerHitEgoCamera) {
+    pointerHitEgoCamera = false
+    return
+  }
+  if (!canvas.value || !camera || !raycaster) return
   const bounds = canvas.value.getBoundingClientRect()
-  pointer.set(
-    ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
-    -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
-  )
-  raycaster.setFromCamera(pointer, camera)
-  const selectableObjects = pickableObjects.filter((object) =>
-    object.userData.wallId === undefined || object.visible)
-  const intersections = raycaster.intersectObjects(selectableObjects, true)
-  const taggedAncestor = (object: THREE.Object3D, key: 'wallId' | 'itemId') => {
-    let current: THREE.Object3D | null = object
-    while (current) {
-      if (current.userData[key] !== undefined) return current
-      current = current.parent
-    }
-    return null
-  }
-  const hit = intersections.find((intersection) =>
-    taggedAncestor(intersection.object, 'wallId') || taggedAncestor(intersection.object, 'itemId'))
-  const wall = hit && taggedAncestor(hit.object, 'wallId')
-  if (wall && typeof wall.userData.wallId === 'string') {
+  const clientX = isFirstPersonMode.value ? bounds.left + bounds.width / 2 : event.clientX
+  const clientY = isFirstPersonMode.value ? bounds.top + bounds.height / 2 : event.clientY
+  const selection = pickRoomSceneSelection(camera, canvas.value, raycaster, pickableObjects, clientX, clientY)
+  emit('egoCameraSelect', false)
+  if (selection?.type === 'wall') {
     emit('select', null)
-    emit('wallSelect', wall.userData.wallId)
+    emit('wallSelect', selection.id)
     return
   }
-  const item = hit && taggedAncestor(hit.object, 'itemId')
   emit('wallSelect', null)
-  emit('select', item && typeof item.userData.itemId === 'number' ? item.userData.itemId : null)
+  emit('select', selection?.type === 'item' ? selection.id : null)
 }
 
 function onCanvasPointerDown(event: PointerEvent) {
   if (event.button !== 0) return
-  pointerDown = { id: event.pointerId, x: event.clientX, y: event.clientY }
+  const isEgoCameraHit = isEgoCameraPointerHit(event)
+  pointerDown = {
+    id: event.pointerId,
+    x: event.clientX,
+    y: event.clientY,
+    egoCamera: isEgoCameraHit,
+    controlsEnabled: controls?.enabled ?? false,
+  }
   pointerDragged = false
+  pointerHitEgoCamera = isEgoCameraHit
+  if (!isEgoCameraHit || !canvas.value || !camera || !raycaster || !egoCameraGroup || !controls) return
+
+  event.preventDefault()
+  event.stopPropagation()
+  event.stopImmediatePropagation()
+  const bounds = canvas.value.getBoundingClientRect()
+  const pointer = new THREE.Vector2(
+    ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+    -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
+  )
+  raycaster.setFromCamera(pointer, camera)
+  const planeHit = raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), new THREE.Vector3())
+  if (planeHit) egoCameraDragOffset.set(egoCameraGroup.position.x - planeHit.x, 0, egoCameraGroup.position.z - planeHit.z)
+  controls.enabled = false
+  canvas.value.setPointerCapture(event.pointerId)
+  emit('egoCameraSelect', true)
 }
 
 function onCanvasPointerMove(event: PointerEvent) {
@@ -479,17 +552,116 @@ function onCanvasPointerMove(event: PointerEvent) {
   if (Math.hypot(event.clientX - pointerDown.x, event.clientY - pointerDown.y) > 4) {
     pointerDragged = true
   }
+  if (!pointerDown.egoCamera || !canvas.value || !camera || !raycaster || !egoCameraGroup) return
+  event.preventDefault()
+  event.stopPropagation()
+  event.stopImmediatePropagation()
+  const bounds = canvas.value.getBoundingClientRect()
+  const pointer = new THREE.Vector2(
+    ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+    -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
+  )
+  raycaster.setFromCamera(pointer, camera)
+  const planeHit = raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), new THREE.Vector3())
+  if (!planeHit) return
+  const worldX = planeHit.x + egoCameraDragOffset.x
+  const worldZ = planeHit.z + egoCameraDragOffset.z
+  const nextCamera = {
+    x: props.roomX + (worldX + roomWidthM.value / 2) * 100,
+    y: props.roomY + (worldZ + roomDepthM.value / 2) * 100,
+    rotation: props.egoCamera.rotation,
+  }
+  if (!isEgoCameraPointInsideRooms(nextCamera, props.rooms)) return
+  emit('egoCameraChange', nextCamera)
 }
 
 function onCanvasPointerUp(event: PointerEvent) {
-  if (pointerDown?.id === event.pointerId) pointerDown = null
+  if (pointerDown?.id !== event.pointerId) return
+  if (pointerDown.egoCamera) {
+    event.preventDefault()
+    event.stopPropagation()
+    event.stopImmediatePropagation()
+    if (controls) controls.enabled = pointerDown.controlsEnabled
+  }
+  pointerDown = null
 }
 
 function onCanvasPointerCancel(event: PointerEvent) {
   if (pointerDown?.id === event.pointerId) {
+    if (pointerDown.egoCamera && controls) controls.enabled = pointerDown.controlsEnabled
     pointerDown = null
     pointerDragged = false
+    pointerHitEgoCamera = false
   }
+}
+
+function isEgoCameraPointerHit(event: PointerEvent) {
+  if (isFirstPersonMode.value || !canvas.value || !camera || !raycaster || !egoCameraGroup) return false
+  const bounds = canvas.value.getBoundingClientRect()
+  if (!bounds.width || !bounds.height) return false
+  const pointer = new THREE.Vector2(
+    ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+    -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
+  )
+  raycaster.setFromCamera(pointer, camera)
+  return raycaster.intersectObject(egoCameraGroup, true).length > 0
+}
+
+function syncEgoCameraFromFirstPerson(force = false) {
+  if (!firstPersonController || firstPersonTransition) return
+  const pose = firstPersonController.getPlanPose(
+    props.roomX,
+    props.roomY,
+    roomWidthM.value,
+    roomDepthM.value,
+  )
+  setEgoCameraModelPose(pose)
+  const now = performance.now()
+  if (!force && now - lastEgoCameraEmitTime < 200) return
+  lastEgoCameraEmitTime = now
+  emit('egoCameraChange', pose)
+}
+
+function onFirstPersonMouseMove(event: MouseEvent) {
+  if (isFirstPersonMode.value && !firstPersonTransition && document.pointerLockElement === canvas.value) {
+    firstPersonController?.look(event.movementX, event.movementY)
+    syncEgoCameraFromFirstPerson()
+  }
+}
+
+function onFirstPersonKeyDown(event: KeyboardEvent) {
+  if (!isFirstPersonMode.value) return
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    event.stopPropagation()
+    exitFirstPersonMode()
+    return
+  }
+  if (!event.key.startsWith('Arrow')) return
+  event.preventDefault()
+  event.stopPropagation()
+  if (firstPersonTransition) return
+  firstPersonController?.setKey(event.key, true)
+}
+
+function onFirstPersonKeyUp(event: KeyboardEvent) {
+  if (!isFirstPersonMode.value || !event.key.startsWith('Arrow')) return
+  event.preventDefault()
+  event.stopPropagation()
+  firstPersonController?.setKey(event.key, false)
+}
+
+function onPointerLockChange() {
+  if (isFirstPersonMode.value && document.pointerLockElement !== canvas.value) {
+    exitFirstPersonMode(false)
+  }
+}
+
+function onPointerLockError() {
+  if (!isFirstPersonMode.value) return
+  console.error('Could not lock the mouse for first-person mode.')
+  firstPersonError.value = 'Your browser could not lock the mouse for first-person mode.'
+  exitFirstPersonMode(false)
 }
 
 function cameraView(topDown: boolean) {
@@ -514,6 +686,7 @@ function cameraView(topDown: boolean) {
 
 function positionCamera() {
   if (!camera || !controls) return
+  if (isFirstPersonMode.value) return
   cameraTransition = null
   controls.enabled = true
   const destination = cameraView(isTopDownView.value)
@@ -531,7 +704,7 @@ function snapshotVector(vector: THREE.Vector3): CameraVector {
 }
 
 function emitCameraSnapshot() {
-  if (!camera || !controls) return
+  if (!camera || !controls || isFirstPersonMode.value) return
   emit('cameraChange', {
     position: snapshotVector(camera.position),
     target: snapshotVector(controls.target),
@@ -600,10 +773,76 @@ function toggleCameraFacingWalls() {
 }
 
 function toggleTopDownView() {
+  if (isFirstPersonMode.value) return
   animateCameraTo(!isTopDownView.value)
 }
 
+async function enterFirstPersonMode() {
+  if (!camera || !controls || !canvas.value || !firstPersonController) return
+  firstPersonError.value = ''
+  isFirstPersonMode.value = true
+  updateEgoCameraModel()
+  isTopDownView.value = false
+  showCameraFacingWalls.value = false
+  cameraTransition = null
+  controls.enabled = false
+  const destination = firstPersonController.prepareEntry(
+    props.egoCamera,
+    props.roomX,
+    props.roomY,
+    roomWidthM.value,
+    roomDepthM.value,
+  )
+  firstPersonTransition = {
+    startedAt: performance.now(),
+    duration: 800,
+    startPosition: camera.position.clone(),
+    endPosition: destination.position,
+    startQuaternion: camera.quaternion.clone(),
+    endQuaternion: destination.quaternion,
+  }
+  previousRenderTime = 0
+  emit('select', null)
+  emit('wallSelect', null)
+
+  const requestId = ++pointerLockRequestId
+  try {
+    await canvas.value.requestPointerLock()
+    if (requestId !== pointerLockRequestId && document.pointerLockElement === canvas.value) {
+      document.exitPointerLock()
+    }
+  } catch (error) {
+    if (!isFirstPersonMode.value) return
+    console.error('Could not lock the mouse for first-person mode.', error)
+    firstPersonError.value = 'Your browser could not lock the mouse for first-person mode.'
+    exitFirstPersonMode()
+  }
+}
+
+function exitFirstPersonMode(releasePointerLock = true) {
+  if (!isFirstPersonMode.value) return
+  syncEgoCameraFromFirstPerson(true)
+  pointerLockRequestId++
+  isFirstPersonMode.value = false
+  updateEgoCameraModel()
+  firstPersonTransition = null
+  firstPersonController?.clearKeys()
+  if (releasePointerLock && document.pointerLockElement === canvas.value) {
+    document.exitPointerLock()
+  }
+  animateCameraTo(false)
+}
+
+function toggleFirstPersonMode() {
+  if (isFirstPersonMode.value) exitFirstPersonMode()
+  else void enterFirstPersonMode()
+}
+
 function resetCamera() {
+  if (isFirstPersonMode.value) {
+    exitFirstPersonMode()
+    return
+  }
   animateCameraTo(false)
 }
 
@@ -650,6 +889,7 @@ watch(() => [
   props.roomDepth,
 ], updateScene, { deep: true })
 watch(() => props.items.map((item) => [item.id, item.rotation]), updateItemRotations, { deep: true })
+watch(() => [props.egoCamera, props.isEgoCameraSelected], updateEgoCameraModel, { deep: true })
 watch(() => [props.roomWidth, props.roomDepth], positionCamera)
 
 onMounted(() => {
@@ -693,8 +933,11 @@ onMounted(() => {
 
     content = new THREE.Group()
     scene.add(content)
+    egoCameraGroup = createEgoCameraModel()
+    scene.add(egoCameraGroup)
     raycaster = new THREE.Raycaster()
-    pointer = new THREE.Vector2()
+    firstPersonController = new RoomSceneFirstPersonController(camera)
+    updateEgoCameraModel()
     updateScene()
     resize()
     resizeObserver = new ResizeObserver(resize)
@@ -702,11 +945,16 @@ onMounted(() => {
     positionCamera()
     controls.addEventListener('start', onControlsStart)
     controls.addEventListener('change', onControlsChange)
-    canvas.value.addEventListener('pointerdown', onCanvasPointerDown)
-    canvas.value.addEventListener('pointermove', onCanvasPointerMove)
-    canvas.value.addEventListener('pointerup', onCanvasPointerUp)
-    canvas.value.addEventListener('pointercancel', onCanvasPointerCancel)
+    canvas.value.addEventListener('pointerdown', onCanvasPointerDown, true)
+    canvas.value.addEventListener('pointermove', onCanvasPointerMove, true)
+    canvas.value.addEventListener('pointerup', onCanvasPointerUp, true)
+    canvas.value.addEventListener('pointercancel', onCanvasPointerCancel, true)
     canvas.value.addEventListener('click', onCanvasClick)
+    document.addEventListener('mousemove', onFirstPersonMouseMove)
+    document.addEventListener('keydown', onFirstPersonKeyDown, true)
+    document.addEventListener('keyup', onFirstPersonKeyUp, true)
+    document.addEventListener('pointerlockchange', onPointerLockChange)
+    document.addEventListener('pointerlockerror', onPointerLockError)
     isReady.value = true
     animationFrame = window.requestAnimationFrame(render)
     if (props.cameraSnapshot) {
@@ -732,19 +980,27 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (isFirstPersonMode.value) syncEgoCameraFromFirstPerson(true)
   emitCameraSnapshot()
   document.removeEventListener('fullscreenchange', onFullscreenChange)
+  document.removeEventListener('mousemove', onFirstPersonMouseMove)
+  document.removeEventListener('keydown', onFirstPersonKeyDown, true)
+  document.removeEventListener('keyup', onFirstPersonKeyUp, true)
+  document.removeEventListener('pointerlockchange', onPointerLockChange)
+  document.removeEventListener('pointerlockerror', onPointerLockError)
+  if (document.pointerLockElement === canvas.value) document.exitPointerLock()
   window.cancelAnimationFrame(animationFrame)
   resizeObserver?.disconnect()
   controls?.dispose()
   if (canvas.value) {
-    canvas.value.removeEventListener('pointerdown', onCanvasPointerDown)
-    canvas.value.removeEventListener('pointermove', onCanvasPointerMove)
-    canvas.value.removeEventListener('pointerup', onCanvasPointerUp)
-    canvas.value.removeEventListener('pointercancel', onCanvasPointerCancel)
+    canvas.value.removeEventListener('pointerdown', onCanvasPointerDown, true)
+    canvas.value.removeEventListener('pointermove', onCanvasPointerMove, true)
+    canvas.value.removeEventListener('pointerup', onCanvasPointerUp, true)
+    canvas.value.removeEventListener('pointercancel', onCanvasPointerCancel, true)
     canvas.value.removeEventListener('click', onCanvasClick)
   }
   if (content) disposeGroup(content)
+  if (egoCameraGroup) disposeGroup(egoCameraGroup)
   renderer?.dispose()
   renderer?.forceContextLoss()
 })
@@ -752,7 +1008,14 @@ onBeforeUnmount(() => {
 
 <template>
   <div ref="host" class="room-scene">
-    <canvas ref="canvas" class="room-scene-canvas" :aria-label="t('Interactive 3D room. Drag to orbit, scroll to zoom, right-drag to pan.')" />
+    <canvas
+      ref="canvas"
+      class="room-scene-canvas"
+      :aria-label="t(isFirstPersonMode ? 'Interactive 3D room. Use the arrow keys to move, the mouse to look around, click to select, and Escape to exit first-person mode.' : 'Interactive 3D room. Drag to orbit, scroll to zoom, right-drag to pan.')"
+    />
+    <div v-if="isFirstPersonMode" class="scene-crosshair" aria-hidden="true"></div>
+    <div v-if="isFirstPersonMode" class="scene-first-person-help">{{ t('Arrow keys to move · Mouse to look · Click to select · Esc to exit') }}</div>
+    <div v-if="firstPersonError" class="scene-first-person-error" role="alert">{{ t(firstPersonError) }}</div>
     <div v-if="sceneError" class="scene-loading scene-error">{{ t(sceneError) }}</div>
     <div v-else-if="!isReady" class="scene-loading">{{ t('Preparing your room…') }}</div>
     <div class="scene-top-left">
@@ -777,6 +1040,14 @@ onBeforeUnmount(() => {
       @click="toggleTopDownView"
     >
       {{ t(isTopDownView ? 'Exit top-down view' : 'Top-down · North up') }}
+    </button>
+    <button
+      class="scene-first-person-toggle"
+      type="button"
+      :aria-pressed="isFirstPersonMode"
+      @click="toggleFirstPersonMode"
+    >
+      {{ t(isFirstPersonMode ? 'Exit first-person mode' : 'First-person mode') }}
     </button>
     <div class="scene-compass"><span>N</span><span>↑</span></div>
     <div v-if="selectedItem" class="scene-selection">

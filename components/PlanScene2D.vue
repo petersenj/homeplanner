@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { getCatalogItem } from '~/catalog'
 import type { CatalogItem } from '~/catalog/types'
-import type { DragMeasurement, LiveMeasurement, Measurement, Point, RoomEdge } from '~/types/planner'
+import type { DragMeasurement, EgoCamera, LiveMeasurement, Measurement, Point, RoomEdge } from '~/types/planner'
 
 type PlanItem = CatalogItem
 
@@ -38,6 +38,8 @@ const props = defineProps<{
   roomDraftMeasurement: LiveMeasurement | null
   drawingCursorClosesRoom: boolean
   items: PlanItem[]
+  egoCamera: EgoCamera
+  isEgoCameraSelected: boolean
   selectedId: number | null
   selectedWallId: string | null
   isDragging: boolean
@@ -60,6 +62,8 @@ const emit = defineEmits<{
   canvasContextMenu: [event: MouseEvent]
   measurementDelete: [id: number]
   itemPointerDown: [event: PointerEvent, item: PlanItem]
+  egoCameraPointerDown: [event: PointerEvent]
+  egoCameraSelect: []
   itemSelect: [id: number]
   wallPointerDown: [event: PointerEvent, wall: RoomEdge]
   rotationPointerDown: [event: PointerEvent, item: PlanItem]
@@ -319,6 +323,26 @@ onBeforeUnmount(() => {
         </g>
         <title>{{ item.name || itemLabel(item.kind) }} · {{ item.width }} × {{ item.depth }} cm</title>
       </g>
+    </g>
+    <g
+      v-if="allRooms.length"
+      class="ego-camera-marker"
+      :class="{ 'is-selected': isEgoCameraSelected, 'is-dragging': isDragging && isEgoCameraSelected }"
+      :transform="`translate(${egoCamera.x} ${egoCamera.y}) rotate(${egoCamera.rotation})`"
+      role="button"
+      tabindex="0"
+      :aria-label="t('Ego camera · drag to move')"
+      @pointerdown="emit('egoCameraPointerDown', $event)"
+      @click.stop="emit('egoCameraSelect')"
+      @keydown.enter.stop.prevent="emit('egoCameraSelect')"
+      @keydown.space.stop.prevent="emit('egoCameraSelect')"
+    >
+      <title>{{ t('Ego camera · drag to move') }}</title>
+      <circle v-if="isEgoCameraSelected" r="22" fill="none" stroke="#668774" stroke-width="2" stroke-dasharray="4 3"/>
+      <path d="M0-15 10-5H-10Z" fill="#668774" fill-opacity=".2"/>
+      <rect x="-11" y="-8" width="22" height="17" rx="4" fill="#668774" stroke="#fff" stroke-width="2"/>
+      <circle cx="0" cy="0.5" r="4.3" fill="#f7f6f2" stroke="#476d55" stroke-width="2"/>
+      <circle cx="0" cy="0.5" r="1.7" fill="#476d55"/>
     </g>
     <g v-if="activeTool === 'select' && roomCorners.length" class="room-corner-handles">
       <g

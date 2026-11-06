@@ -3,8 +3,9 @@ import { defineAsyncComponent } from 'vue'
 import HomePlannerImportExport from '~/components/HomePlannerImportExport.vue'
 import { catalogItemsByKind, getCatalogItem } from '~/catalog'
 import type { CatalogItem, FurnitureSide } from '~/catalog/types'
-import type { CameraSnapshot, DragMeasurement, Measurement, Point, RoomEdge } from '~/types/planner'
+import type { CameraSnapshot, DragMeasurement, EgoCamera, Measurement, Point, RoomEdge } from '~/types/planner'
 import type { ImportedPlan } from '~/utils/planFile'
+import { defaultEgoCamera } from '~/utils/egoCameraPlan'
 
 const RoomScene3D = defineAsyncComponent(() => import('~/components/RoomScene3D.vue'))
 const PlanScene2D = defineAsyncComponent(() => import('~/components/PlanScene2D.vue'))
@@ -43,6 +44,8 @@ const defaultRoomPoints: Point[] = [
 ]
 const view = ref<'2d' | '3d'>('2d')
 const cameraSnapshot = ref<CameraSnapshot | null>(null)
+const egoCamera = ref<EgoCamera>(defaultEgoCamera([defaultRoomPoints]))
+const isEgoCameraSelected = ref(false)
 const activeTool = ref<'select' | 'room' | 'addRoom' | 'measure' | 'window' | 'door' | 'cube' | 'furniture'>('select')
 const selectedId = ref<number | null>(null)
 const selectedWallId = ref<string | null>(null)
@@ -84,6 +87,7 @@ const canvasCardWidth = ref(0)
 let canvasResizeObserver: ResizeObserver | undefined
 let isMobileViewport = false
 const isDragging = ref(false)
+const isDraggingEgoCamera = ref(false)
 const isRotating = ref(false)
 const isKeyboardMoving = ref(false)
 const activePointerId = ref<number | null>(null)
@@ -1011,6 +1015,7 @@ function addItem(kind: FurnitureKind, at?: Point, validateFloorPlacement = false
   items.value.push(item)
   canvasActionError.value = ''
   selectedWallId.value = null
+  isEgoCameraSelected.value = false
   selectedId.value = item.id
   activeTool.value = 'select'
   pendingPoint.value = null
@@ -1021,6 +1026,7 @@ function selectTool(tool: typeof activeTool.value) {
   activeTool.value = tool
   selectedId.value = null
   selectedWallId.value = null
+  isEgoCameraSelected.value = false
 }
 
 function clearCanvasDraft() {
@@ -1038,6 +1044,7 @@ function cancelActiveCanvasAction() {
   activeTool.value = 'select'
   selectedId.value = null
   selectedWallId.value = null
+  isEgoCameraSelected.value = false
 }
 
 function svgPoint(event: MouseEvent | PointerEvent, svg = event.currentTarget as SVGSVGElement): Point {
@@ -1116,7 +1123,10 @@ function onCanvasClick(event: MouseEvent) {
     return
   }
   if ((event.target as Element).closest('.plan-item')) return
-  if (activeTool.value === 'select') selectedWallId.value = null
+  if (activeTool.value === 'select') {
+    selectedWallId.value = null
+    isEgoCameraSelected.value = false
+  }
   const rawPoint = svgPoint(event)
   if (!allRooms.value.length && activeTool.value === 'select') {
     activeTool.value = 'room'
@@ -1349,6 +1359,7 @@ function roomWallPointerDown(event: PointerEvent, edge: RoomEdge) {
   if (activeTool.value !== 'select' || !event.isPrimary || event.button !== 0) return
   event.stopPropagation()
   selectedId.value = null
+  isEgoCameraSelected.value = false
   selectedWallId.value = edge.id
   const svg = (event.currentTarget as SVGGElement).ownerSVGElement
   if (!svg) return
@@ -1418,6 +1429,7 @@ function onCanvasContextMenu(event: MouseEvent) {
 function itemPointerDown(event: PointerEvent, item: PlanItem) {
   event.stopPropagation()
   selectedWallId.value = null
+  isEgoCameraSelected.value = false
   selectedId.value = item.id
   if (activeTool.value !== 'select') return
   if (!event.isPrimary || event.button !== 0) return
@@ -1432,18 +1444,53 @@ function itemPointerDown(event: PointerEvent, item: PlanItem) {
   isDragging.value = true
 }
 
+function egoCameraPointerDown(event: PointerEvent) {
+  event.stopPropagation()
+  selectedWallId.value = null
+  selectedId.value = null
+  isEgoCameraSelected.value = true
+  if (activeTool.value !== 'select' || !event.isPrimary || event.button !== 0) return
+  const svg = (event.currentTarget as SVGGElement).ownerSVGElement
+  if (svg) {
+    const point = svgPoint(event, svg)
+    dragOffset.value = { x: egoCamera.value.x - point.x, y: egoCamera.value.y - point.y }
+    svg.setPointerCapture(event.pointerId)
+  }
+  ignoreNextCanvasClick.value = true
+  activePointerId.value = event.pointerId
+  isDraggingEgoCamera.value = true
+  isDragging.value = true
+}
+
+function selectEgoCamera() {
+  selectedId.value = null
+  selectedWallId.value = null
+  isEgoCameraSelected.value = true
+}
+
+function setEgoCameraSelected(selected: boolean) {
+  if (selected) {
+    selectedId.value = null
+    selectedWallId.value = null
+  }
+  isEgoCameraSelected.value = selected
+}
+
 function selectItem(id: number | null) {
   selectedWallId.value = null
+  isEgoCameraSelected.value = false
   selectedId.value = id
 }
 
 function selectRoomWall(id: string | null) {
   selectedId.value = null
+  isEgoCameraSelected.value = false
   selectedWallId.value = id
 }
 
 function rotationHandlePointerDown(event: PointerEvent, item: PlanItem) {
   event.stopPropagation()
+  isEgoCameraSelected.value = false
   selectedId.value = item.id
   if (activeTool.value !== 'select' || !event.isPrimary || event.button !== 0) return
   const svg = (event.currentTarget as SVGGElement).ownerSVGElement
@@ -1459,6 +1506,18 @@ function rotationHandlePointerDown(event: PointerEvent, item: PlanItem) {
 }
 
 function onCanvasPointerMove(event: PointerEvent) {
+  if (isDraggingEgoCamera.value && activePointerId.value === event.pointerId) {
+    const pointerPoint = svgPoint(event)
+    const point = {
+      x: pointerPoint.x + dragOffset.value.x,
+      y: pointerPoint.y + dragOffset.value.y,
+    }
+    if (isPointInsideRoom(point)) {
+      egoCamera.value.x = point.x
+      egoCamera.value.y = point.y
+    }
+    return
+  }
   if (roomWallDrag.value && activePointerId.value === event.pointerId) {
     const drag = roomWallDrag.value
     const pointer = svgPoint(event)
@@ -1567,6 +1626,7 @@ function onCanvasPointerMove(event: PointerEvent) {
 
 function stopDragging() {
   isDragging.value = false
+  isDraggingEgoCamera.value = false
   isRotating.value = false
   roomCornerDrag.value = null
   roomWallDrag.value = null
@@ -1594,6 +1654,8 @@ function confirmNewFloorplan() {
   newFloorplanConfirmationOpen.value = false
   projectMenuOpen.value = false
   planName.value = 'My apartment'
+  egoCamera.value = { x: 0, y: 0, rotation: 0 }
+  isEgoCameraSelected.value = false
   activeConfirmation.value = null
   items.value = []
   roomWallDimensions.value = {}
@@ -1610,6 +1672,7 @@ function confirmNewFloorplan() {
   measurementCursor.value = null
   selectedId.value = null
   selectedWallId.value = null
+  isEgoCameraSelected.value = false
   activeTool.value = 'room'
   view.value = '2d'
 }
@@ -1629,6 +1692,8 @@ function finishRoomDrawing() {
     return
   }
   roomPoints.value = points.map((point) => ({ ...point }))
+  egoCamera.value = defaultEgoCamera([roomPoints.value])
+  isEgoCameraSelected.value = false
   additionalRoomPoints.value = []
   roomNames.value = ['Room 1']
   items.value = []
@@ -1647,6 +1712,7 @@ function beginRoomAddition() {
   clearCanvasDraft()
   selectedId.value = null
   selectedWallId.value = null
+  isEgoCameraSelected.value = false
   activeTool.value = allRooms.value.length ? 'addRoom' : 'room'
   view.value = '2d'
 }
@@ -1814,6 +1880,7 @@ const exportPlanData = computed(() => ({
   items: items.value,
   roomWallDimensions: roomWallDimensions.value,
   measurements: measurements.value,
+  egoCamera: egoCamera.value,
 }))
 
 const importedPlanModel = computed<ImportedPlan | null>({
@@ -1826,6 +1893,8 @@ const importedPlanModel = computed<ImportedPlan | null>({
     roomPoints.value = plan.rooms[0] ?? []
     additionalRoomPoints.value = plan.rooms.slice(1)
     roomNames.value = plan.roomNames
+    egoCamera.value = plan.egoCamera
+    isEgoCameraSelected.value = false
     nextId.value = Math.max(10, ...plan.items.map((item) => item.id + 1), ...plan.measurements.map((measurement) => measurement.id + 1))
     selectedId.value = null
     selectedWallId.value = null
@@ -1892,6 +1961,7 @@ function confirmResetPlan() {
   measurements.value = []
   selectedId.value = null
   selectedWallId.value = null
+  isEgoCameraSelected.value = false
 }
 
 function confirmActiveAction() {
@@ -2026,7 +2096,7 @@ onMounted(() => {
   const savedPlan = window.localStorage.getItem('floorwise-plan-v1') ?? window.localStorage.getItem('roomwise-plan-v1')
   if (savedPlan) {
     try {
-      const plan = JSON.parse(savedPlan) as { items?: Array<Partial<PlanItem> & Pick<PlanItem, 'id' | 'kind' | 'x' | 'y' | 'width' | 'depth' | 'height' | 'rotation'> & { rearSide?: unknown; doorOpen?: boolean; windowOpen?: boolean; windowOpenWings?: 'closed' | 'left' | 'right' | 'both' }>; roomWallDimensions?: Record<string, { depth?: number; height?: number }>; measurements?: Measurement[]; roomPoints?: Point[]; rooms?: Point[][]; roomNames?: string[] }
+      const plan = JSON.parse(savedPlan) as { items?: Array<Partial<PlanItem> & Pick<PlanItem, 'id' | 'kind' | 'x' | 'y' | 'width' | 'depth' | 'height' | 'rotation'> & { rearSide?: unknown; doorOpen?: boolean; windowOpen?: boolean; windowOpenWings?: 'closed' | 'left' | 'right' | 'both' }>; roomWallDimensions?: Record<string, { depth?: number; height?: number }>; measurements?: Measurement[]; roomPoints?: Point[]; rooms?: Point[][]; roomNames?: string[]; egoCamera?: EgoCamera }
       if (Array.isArray(plan.items) && Array.isArray(plan.measurements)) {
         items.value = plan.items.map(({ rearSide: _rearSide, doorOpen, windowOpen, windowOpenWings, ...savedItem }) => {
           const legacyOpen = doorOpen ?? windowOpen
@@ -2060,6 +2130,12 @@ onMounted(() => {
           typeof plan.roomNames?.[index] === 'string' && plan.roomNames[index]!.trim()
             ? plan.roomNames[index]!
             : `Room ${index + 1}`)
+        egoCamera.value = plan.egoCamera
+          && Number.isFinite(plan.egoCamera.x)
+          && Number.isFinite(plan.egoCamera.y)
+          && Number.isFinite(plan.egoCamera.rotation)
+          ? { ...plan.egoCamera, rotation: normalizeRotation(plan.egoCamera.rotation) }
+          : defaultEgoCamera(allRooms.value)
         nextId.value = Math.max(10, ...items.value.map((item) => item.id + 1), ...measurements.value.map((measurement) => measurement.id + 1))
       } else {
         console.warn(t('Saved room plan has an invalid structure and was not restored.'))
@@ -2080,7 +2156,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('blur', onWindowBlur)
   stopKeyboardMovement()
 })
-watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints, roomNames], () => {
+watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints, roomNames, egoCamera], () => {
   if (import.meta.client) {
     window.localStorage.setItem('floorwise-plan-v1', JSON.stringify({
       items: items.value,
@@ -2089,6 +2165,7 @@ watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints
       roomPoints: roomPoints.value,
       rooms: allRooms.value,
       roomNames: roomNames.value,
+      egoCamera: egoCamera.value,
     }))
   }
 }, { deep: true })
@@ -2256,6 +2333,8 @@ watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints
             :room-draft-measurement="roomDraftMeasurement"
             :drawing-cursor-closes-room="drawingCursorClosesRoom"
             :items="items"
+            :ego-camera="egoCamera"
+            :is-ego-camera-selected="isEgoCameraSelected"
             :selected-id="selectedId"
             :selected-wall-id="selectedWallId"
             :is-dragging="isDragging"
@@ -2276,6 +2355,8 @@ watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints
             @measurement-delete="removeMeasurement"
             @item-pointer-down="itemPointerDown"
             @item-select="selectItem"
+            @ego-camera-pointer-down="egoCameraPointerDown"
+            @ego-camera-select="selectEgoCamera"
             @wall-pointer-down="roomWallPointerDown"
             @rotation-pointer-down="rotationHandlePointerDown"
             @room-corner-pointer-down="roomCornerPointerDown"
@@ -2294,9 +2375,13 @@ watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints
               :selected-id="selectedId"
               :selected-wall-id="selectedWallId"
               :camera-snapshot="cameraSnapshot"
+              :ego-camera="egoCamera"
+              :is-ego-camera-selected="isEgoCameraSelected"
               @select="selectItem"
               @wall-select="selectRoomWall"
               @camera-change="cameraSnapshot = $event"
+              @ego-camera-change="egoCamera = $event"
+              @ego-camera-select="setEgoCameraSelected"
             />
           </ClientOnly>
           <div v-if="activeTool === 'room' || activeTool === 'addRoom'" class="room-draw-banner">
@@ -2546,6 +2631,16 @@ button { color: inherit; cursor: pointer; }
 .scene-walls-toggle[aria-pressed="true"] { border-color: #819582; background: #eef3ed; color: #4f6957; }
 .scene-top-view-toggle { position: absolute; top: 52px; right: 58px; min-height: 30px; padding: 0 9px; border: 1px solid #e7e5de; border-radius: 6px; background: #ffffffed; color: #687568; font-size: 9px; box-shadow: 0 2px 8px #3432280a; }
 .scene-top-view-toggle[aria-pressed="true"] { border-color: #819582; background: #eef3ed; color: #4f6957; }
+.scene-first-person-toggle { position: absolute; top: 88px; right: 58px; min-height: 30px; padding: 0 9px; border: 1px solid #e7e5de; border-radius: 6px; background: #ffffffed; color: #687568; font-size: 9px; box-shadow: 0 2px 8px #3432280a; }
+.scene-first-person-toggle[aria-pressed="true"] { border-color: #819582; background: #eef3ed; color: #4f6957; }
+.scene-crosshair { position: absolute; top: 50%; left: 50%; width: 18px; height: 18px; transform: translate(-50%, -50%); border: 1px solid #ffffffdd; border-radius: 50%; box-shadow: 0 0 0 1px #34322899; pointer-events: none; }
+.scene-crosshair::before, .scene-crosshair::after { position: absolute; top: 50%; left: 50%; content: ""; background: #ffffffed; box-shadow: 0 0 0 1px #34322899; transform: translate(-50%, -50%); }
+.scene-crosshair::before { width: 2px; height: 26px; }
+.scene-crosshair::after { width: 26px; height: 2px; }
+.ego-camera-marker { cursor: grab; }
+.ego-camera-marker.is-dragging { cursor: grabbing; }
+.scene-first-person-help { position: absolute; top: 16px; left: 50%; max-width: calc(100% - 32px); padding: 8px 10px; transform: translateX(-50%); border: 1px solid #e8e5dc; border-radius: 7px; background: #ffffffdf; color: #62695f; font-size: 9px; text-align: center; pointer-events: none; }
+.scene-first-person-error { position: absolute; top: 50%; left: 50%; max-width: calc(100% - 32px); padding: 9px 12px; transform: translate(-50%, -50%); border: 1px solid #e8c9bd; border-radius: 7px; background: #fff8f4; color: #854d3d; font-size: 11px; text-align: center; box-shadow: 0 2px 8px #34322814; }
 .scene-controls { position: absolute; left: 50%; bottom: 15px; display: flex; gap: 4px; transform: translateX(-50%); padding: 5px; border: 1px solid #e7e5de; border-radius: 8px; background: #ffffffdf; box-shadow: 0 2px 8px #3432280a; pointer-events: none; }
 .scene-controls span { display: flex; align-items: center; gap: 5px; padding: 5px 8px; color: #74776e; font-size: 9px; white-space: nowrap; }
 .scene-controls i { color: #718672; font-size: 12px; font-style: normal; }
@@ -2625,7 +2720,7 @@ button { color: inherit; cursor: pointer; }
   .topbar { height: 56px; flex-basis: 56px; padding: 0 12px; }.breadcrumbs { gap: 6px; font-size: 10px; }.saved-state { display: none; }.mobile-menu { display: inline-block; padding: 0 5px; font-size: 15px; }.top-actions { gap: 3px; }.top-icon, .action-divider, .share-button { display: none; }
   .toolbar-row { height: 56px; flex-basis: 56px; padding: 0 12px; }.view-switch button { padding: 0 8px; font-size: 9px; }.tool-actions { gap: 1px; }.tool-button { width: 26px; height: 27px; }.tool-button:nth-of-type(4), .tool-button:nth-of-type(5), .tool-actions .toolbar-divider:nth-of-type(2), .zoom-button, .zoom-level { display: none; }.tool-hint { display: none; }
   .canvas-area { min-height: 350px; padding: 3px 10px 0; }.plan-svg { min-height: 350px; }.canvas-footer { padding: 0 4px; gap: 5px; font-size: 8px; }.inspector { top: 122px; right: 20px; width: 220px; }.canvas-compass { right: 9px; top: 9px; }.canvas-scale { right: 10px; bottom: 10px; }
-  .scene-controls { max-width: calc(100% - 22px); width: max-content; bottom: 10px; gap: 0; }.scene-controls span { padding: 5px; font-size: 8px; }.scene-top-left { top: 10px; left: 10px; }.scene-compass { top: 10px; right: 10px; }.scene-walls-toggle { top: 58px; right: 10px; }.scene-top-view-toggle { top: 94px; right: 10px; }.scene-fullscreen { right: 10px; bottom: 86px; }.scene-reset { right: 10px; bottom: 51px; }.scene-selection { left: 10px; bottom: 12px; }
+  .scene-controls { max-width: calc(100% - 22px); width: max-content; bottom: 10px; gap: 0; }.scene-controls span { padding: 5px; font-size: 8px; }.scene-top-left { top: 10px; left: 10px; }.scene-compass { top: 10px; right: 10px; }.scene-walls-toggle { top: 58px; right: 10px; }.scene-top-view-toggle { top: 94px; right: 10px; }.scene-first-person-toggle { top: 130px; right: 10px; }.scene-fullscreen { right: 10px; bottom: 86px; }.scene-reset { right: 10px; bottom: 51px; }.scene-selection { left: 10px; bottom: 12px; }
   .room-draw-banner { top: 7px; gap: 5px; padding: 7px; }.room-draw-banner > div { min-width: 0; }.room-draw-banner > div > span { display: none; }.room-draw-banner .corner-count { padding: 0 3px; font-size: 8px; }.room-draw-banner small { max-width: 130px; white-space: normal; }
 }
 

@@ -1,6 +1,7 @@
 import { catalogItemsByKind } from '~/catalog'
 import type { CatalogItem } from '~/catalog/types'
-import type { Measurement, Point } from '~/types/planner'
+import type { EgoCamera, Measurement, Point } from '~/types/planner'
+import { defaultEgoCamera } from '~/utils/egoCameraPlan'
 
 export type ImportedPlan = {
   items: CatalogItem[]
@@ -8,6 +9,7 @@ export type ImportedPlan = {
   measurements: Measurement[]
   rooms: Point[][]
   roomNames: string[]
+  egoCamera: EgoCamera
 }
 
 export type PlanFileExport = {
@@ -19,6 +21,7 @@ export type PlanFileExport = {
   items: CatalogItem[]
   roomWallDimensions: Record<string, { depth: number; height: number }>
   measurements: Measurement[]
+  egoCamera: EgoCamera
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -136,7 +139,20 @@ export function parsePlanFile(value: unknown, isValidRoomLayout: (rooms: Point[]
       ? importedRoomNames[index]
       : `Room ${index + 1}`)
 
-  return { items, roomWallDimensions, measurements, rooms, roomNames }
+  let egoCamera = defaultEgoCamera(rooms)
+  if (value.egoCamera !== undefined) {
+    if (!isRecord(value.egoCamera)
+      || typeof value.egoCamera.x !== 'number' || !Number.isFinite(value.egoCamera.x)
+      || typeof value.egoCamera.y !== 'number' || !Number.isFinite(value.egoCamera.y)
+      || typeof value.egoCamera.rotation !== 'number' || !Number.isFinite(value.egoCamera.rotation)) invalidPlan()
+    egoCamera = {
+      x: value.egoCamera.x,
+      y: value.egoCamera.y,
+      rotation: normalizeRotation(value.egoCamera.rotation),
+    }
+  }
+
+  return { items, roomWallDimensions, measurements, rooms, roomNames, egoCamera }
 }
 
 export function downloadPlanFile(plan: PlanFileExport, planName: string) {

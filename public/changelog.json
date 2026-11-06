@@ -1,5 +1,40 @@
 [
   {
+    "date": "2026-11-05",
+    "subject": "[improve] added onest and manrope font",
+    "type": "improvement"
+  },
+  {
+    "date": "2026-11-02",
+    "subject": "add sort saved plans by date",
+    "type": "feature"
+  },
+  {
+    "date": "2026-11-02",
+    "subject": "add request to save if new plan should be started",
+    "type": "feature"
+  },
+  {
+    "date": "2026-11-02",
+    "subject": "add delete option to saved plans",
+    "type": "feature"
+  },
+  {
+    "date": "2026-11-02",
+    "subject": "add option to save and open local plans",
+    "type": "feature"
+  },
+  {
+    "date": "2026-11-02",
+    "subject": "add import and export feature",
+    "type": "feature"
+  },
+  {
+    "date": "2026-11-02",
+    "subject": "add changelog types",
+    "type": "feature"
+  },
+  {
     "date": "2026-11-02",
     "subject": "[feat] increased max floorsize to be 20m wide",
     "type": "feature"
@@ -112,41 +147,6 @@
   {
     "date": "2026-11-01",
     "subject": "show measurements while dragging with keyboard",
-    "type": "other"
-  },
-  {
-    "date": "2026-11-01",
-    "subject": "improve rotation handling",
-    "type": "improvement"
-  },
-  {
-    "date": "2026-11-01",
-    "subject": "add carpet furniture item",
-    "type": "feature"
-  },
-  {
-    "date": "2026-11-01",
-    "subject": "add item translation to its own file",
-    "type": "feature"
-  },
-  {
-    "date": "2026-11-01",
-    "subject": "move furniture and objects into folder structure to be easily expandable",
-    "type": "other"
-  },
-  {
-    "date": "2026-11-01",
-    "subject": "update changelog",
-    "type": "other"
-  },
-  {
-    "date": "2026-11-01",
-    "subject": "add sass, start moving styles into components, also restructure app to have components instead one huge file",
-    "type": "feature"
-  },
-  {
-    "date": "2026-10-29",
-    "subject": "make grid use variable size prop and expand canvas",
     "type": "other"
   }
 ]

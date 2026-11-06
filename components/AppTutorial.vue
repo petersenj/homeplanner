@@ -61,7 +61,7 @@ const steps = computed(() => [
     body: createOwnChosen.value
       ? t('Click the highlighted Start a new floorplan menu item to begin drawing your own room.')
       : t('Keep exploring the demo floor plan, or start with a blank canvas and draw your own room.'),
-    selector: createOwnChosen.value ? '.project-menu [role="menuitem"]' : null,
+    selector: createOwnChosen.value ? '.project-menu > button' : null,
     choices: !createOwnChosen.value,
   },
 ])

@@ -99,6 +99,7 @@ const dragOffset = ref<Point>({ x: 0, y: 0 })
 const rotationStartPointerAngle = ref(0)
 const rotationStartItemAngle = ref(0)
 const ignoreNextCanvasClick = ref(false)
+const projectSection = ref<HTMLDivElement | null>(null)
 const heldArrowKeys = new Set<string>()
 let keyboardMoveFrame = 0
 let keyboardMoveStartedAt = 0
@@ -2153,6 +2154,10 @@ function moveSelectedItemWithKeys(timestamp: number) {
 }
 
 function onKeyboardMoveKeyDown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && projectMenuOpen.value) {
+    projectMenuOpen.value = false
+    return
+  }
   if (isEditableKeyboardTarget(event.target)) return
   if (event.key === 'Delete' && selectedId.value !== null) {
     event.preventDefault()
@@ -2181,6 +2186,12 @@ function onWindowBlur() {
   stopKeyboardMovement()
 }
 
+function onDocumentPointerDown(event: PointerEvent) {
+  if (projectMenuOpen.value && event.target instanceof Node && !projectSection.value?.contains(event.target)) {
+    projectMenuOpen.value = false
+  }
+}
+
 function syncSidebarToViewport() {
   const nextIsMobileViewport = window.matchMedia('(max-width: 760px)').matches
   if (nextIsMobileViewport === isMobileViewport) return
@@ -2201,6 +2212,7 @@ onMounted(() => {
   window.addEventListener('keydown', onKeyboardMoveKeyDown)
   window.addEventListener('keyup', onKeyboardMoveKeyUp)
   window.addEventListener('blur', onWindowBlur)
+  document.addEventListener('pointerdown', onDocumentPointerDown, true)
   const savedPlan = window.localStorage.getItem('floorwise-plan-v1') ?? window.localStorage.getItem('roomwise-plan-v1')
   if (savedPlan) {
     try {
@@ -2263,6 +2275,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyboardMoveKeyDown)
   window.removeEventListener('keyup', onKeyboardMoveKeyUp)
   window.removeEventListener('blur', onWindowBlur)
+  document.removeEventListener('pointerdown', onDocumentPointerDown, true)
   stopKeyboardMovement()
 })
 watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints, roomNames, roomFloors, egoCamera], () => {
@@ -2294,7 +2307,7 @@ watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints
         </button>
       </div>
       <div v-if="sidebarOpen" class="sidebar-scroll">
-        <div class="sidebar-section project-section">
+        <div ref="projectSection" class="sidebar-section project-section">
           <div class="section-eyebrow">{{ t('YOUR PROJECT') }}</div>
           <button class="project-select" :aria-expanded="projectMenuOpen" aria-haspopup="menu" @click="projectMenuOpen = !projectMenuOpen">
             <span class="project-avatar">M</span>

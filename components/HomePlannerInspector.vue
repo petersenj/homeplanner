@@ -3,10 +3,16 @@ import type { CatalogItem } from '~/catalog/types'
 
 type PlanItem = Pick<CatalogItem, 'kind' | 'section' | 'wallDetailCategory' | 'name' | 'width' | 'depth' | 'height' | 'rotation' | 'floorOffset' | 'color' | 'open'>
 type WallInspector = { length: number; minimumLength: number; depth: number; height: number }
+type RoomFloorInspector = { name: string; type: string | null; tint: string; rotation: number }
+type FloorOption = { id: string; label: string }
+type FloorTintOption = FloorOption & { color: string }
 
 const props = defineProps<{
   item: PlanItem | null
   wall: WallInspector | null
+  roomFloor: RoomFloorInspector | null
+  floorTypeOptions: FloorOption[]
+  floorTintOptions: FloorTintOption[]
   surfaceColors: string[]
   selectedSurfaceColor: string
   openable: boolean
@@ -24,19 +30,37 @@ const emit = defineEmits<{
   wallLengthChange: [length: number]
   wallDepthChange: [depth: number]
   wallHeightChange: [height: number]
+  floorTypeChange: [type: string | null]
+  floorTintChange: [tint: string]
+  floorRotationChange: [rotation: number]
 }>()
 
 const activeTab = ref<'properties' | 'appearance'>('properties')
-const hasAppearance = computed(() => props.surfaceColors.length > 0 || props.item?.section === 'wall-details' || props.openable)
+const hasAppearance = computed(() => Boolean(props.roomFloor) || props.surfaceColors.length > 0 || props.item?.section === 'wall-details' || props.openable)
 
 watch(hasAppearance, (available) => {
   if (!available) activeTab.value = 'properties'
+})
+
+watch(() => props.roomFloor, (roomFloor) => {
+  if (roomFloor) activeTab.value = 'appearance'
 })
 
 function onRotationChange(event: Event) {
   if (!(event.target instanceof HTMLInputElement)) return
   const rotation = Number(event.target.value)
   if (Number.isFinite(rotation)) emit('rotationChange', rotation)
+}
+
+function onFloorTypeChange(event: Event) {
+  if (!(event.target instanceof HTMLSelectElement)) return
+  emit('floorTypeChange', event.target.value || null)
+}
+
+function onFloorRotationChange(event: Event) {
+  if (!(event.target instanceof HTMLInputElement)) return
+  const rotation = Number(event.target.value)
+  if (Number.isFinite(rotation)) emit('floorRotationChange', rotation)
 }
 
 function onWallDimensionChange(event: Event, dimension: 'length' | 'depth' | 'height') {
@@ -56,9 +80,9 @@ function onWallDimensionChange(event: Event, dimension: 'length' | 'depth' | 'he
 <template>
   <aside class="inspector">
     <div class="inspector-heading">
-      <div><span class="section-eyebrow">{{ t(wall ? 'SELECTED WALL' : 'SELECTED OBJECT') }}</span><input v-if="item" v-model="item.name"
+      <div><span class="section-eyebrow">{{ t(roomFloor ? 'ROOM APPEARANCE' : wall ? 'SELECTED WALL' : 'SELECTED OBJECT') }}</span><input v-if="item" v-model="item.name"
           class="inspector-title-input" :aria-label="`${t('Name for')} ${itemLabel(item.kind)}`"
-          :placeholder="itemLabel(item.kind)"><strong v-else class="inspector-wall-title">{{ t('Wall') }}</strong></div><button class="icon-button" :aria-label="t('Close inspector')"
+          :placeholder="itemLabel(item.kind)"><strong v-else class="inspector-wall-title">{{ roomFloor?.name ?? t('Wall') }}</strong></div><button class="icon-button" :aria-label="t('Close inspector')"
         @click="emit('close')">×</button>
     </div>
     <template v-if="wall">
@@ -71,6 +95,44 @@ function onWallDimensionChange(event: Event, dimension: 'length' | 'depth' | 'he
       <label class="property-label">{{ t('Height') }} <span>cm</span><input
           :value="wall.height" type="number" min="1" step="any"
           @change="onWallDimensionChange($event, 'height')"></label>
+    </template>
+    <template v-else-if="roomFloor">
+      <div class="inspector-tabs" role="tablist">
+        <button id="room-appearance-tab" class="inspector-tab is-active" role="tab" aria-selected="true" aria-controls="room-appearance-panel">{{ t('Appearance') }}</button>
+      </div>
+      <div id="room-appearance-panel" class="appearance-panel" role="tabpanel" aria-labelledby="room-appearance-tab">
+        <label class="property-label">{{ t('Floor type') }}
+          <select :value="roomFloor.type ?? ''" @change="onFloorTypeChange">
+            <option value="">{{ t('No flooring') }}</option>
+            <option v-for="floorType in floorTypeOptions" :key="floorType.id" :value="floorType.id">{{ floorType.label }}</option>
+          </select>
+        </label>
+        <template v-if="roomFloor.type">
+          <span class="property-label">{{ t('Tint') }}</span>
+          <div class="floor-tint-options" role="group" :aria-label="t('Tint')">
+            <button
+              v-for="tint in floorTintOptions"
+              :key="tint.id"
+              class="floor-tint-option"
+              :class="{ 'is-selected': roomFloor.tint === tint.id }"
+              type="button"
+              :aria-label="`${t('Select tint')} ${tint.label}`"
+              :aria-pressed="roomFloor.tint === tint.id"
+              @click="emit('floorTintChange', tint.id)"
+            >
+              <span class="floor-tint-swatch" :style="{ '--swatch-color': tint.color }"></span>
+              <span>{{ tint.label }}</span>
+            </button>
+          </div>
+          <label class="property-label rotation-property-label">{{ t('Flooring angle') }}
+            <span>°</span>
+            <div class="rotation-controls">
+              <input :value="roomFloor.rotation" :aria-label="t('Flooring angle')" type="number" min="0" max="359" step="1" @change="onFloorRotationChange">
+              <button class="rotate-button" type="button" :aria-label="t('Rotate flooring 90°')" :title="t('Rotate flooring 90°')" @click="emit('floorRotationChange', roomFloor.rotation + 90)">↻</button>
+            </div>
+          </label>
+        </template>
+      </div>
     </template>
     <template v-else-if="item">
       <div v-if="hasAppearance" class="inspector-tabs" role="tablist">
@@ -239,6 +301,60 @@ function onWallDimensionChange(event: Event, dimension: 'length' | 'depth' | 'he
     display: block;
     margin-bottom: 10px;
   }
+
+  select {
+    display: block;
+    width: 100%;
+    height: 34px;
+    margin-top: 5px;
+    padding: 0 8px;
+    border: 1px solid #e3e3dc;
+    border-radius: 6px;
+    background: #fff;
+    color: #41443e;
+    font: 500 12px 'Manrope', sans-serif;
+  }
+}
+
+.floor-tint-options {
+  display: grid;
+  gap: 5px;
+  margin: 0 0 14px;
+}
+
+.floor-tint-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 31px;
+  padding: 4px 7px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: #fff;
+  color: #555850;
+  font: 500 11px 'Manrope', sans-serif;
+  text-align: left;
+  cursor: pointer;
+
+  &.is-selected {
+    border-color: #91a490;
+    background: #f3f6f1;
+    color: #41443e;
+  }
+
+  &:focus-visible {
+    outline: 2px solid #526d57;
+    outline-offset: 2px;
+  }
+}
+
+.floor-tint-swatch {
+  width: 19px;
+  height: 19px;
+  flex: 0 0 19px;
+  border-radius: 50%;
+  background: var(--swatch-color);
+  box-shadow: 0 0 0 1px #d8d8d0;
 }
 
 .opening-state-control {

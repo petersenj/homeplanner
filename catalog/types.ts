@@ -4,6 +4,26 @@ export type FurnitureSide = 'top' | 'right' | 'bottom' | 'left'
 export type CatalogLanguage = 'en' | 'de'
 export type CatalogSection = 'catalog' | 'wall-details'
 export type WallDetailCategory = 'Windows' | 'Doors'
+export type FloorMaterialPattern = 'parquet' | 'planks' | 'tiles'
+
+export const getDimensionDetail = ([width, depth]: [number, number, number]) => `${width} × ${depth} cm`
+
+export type FloorMaterialTint = {
+  id: string
+  label: Record<CatalogLanguage, string>
+  color: string
+  lineColor: string
+}
+
+export type FloorMaterialDefinition = {
+  type: string
+  label: Record<CatalogLanguage, string>
+  pattern: FloorMaterialPattern
+  patternSize: [width: number, height: number]
+  patternLines: Array<[x1: number, y1: number, x2: number, y2: number]>
+  lineWidth: number
+  tints: FloorMaterialTint[]
+}
 
 export type SvgShape = {
   tag: 'path' | 'rect' | 'line' | 'circle'

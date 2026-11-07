@@ -14,6 +14,7 @@ export type DragMeasurement = { id: string; start: Point; end: Point; label: Poi
 export type LiveMeasurement = Omit<DragMeasurement, 'id'>
 export type CameraVector = { x: number; y: number; z: number }
 export type EgoCamera = { x: number; y: number; rotation: number }
+export type RoomFloor = { type: string | null; tint: string; rotation: number }
 export type CameraSnapshot = {
   position: CameraVector
   target: CameraVector

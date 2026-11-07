@@ -1,4 +1,5 @@
 import type { CatalogItemDefinition, RegisteredCatalogItemDefinition } from './types'
+import type { FloorMaterialDefinition } from './types'
 
 const definitions = import.meta.glob<CatalogItemDefinition>('./{furniture,objects}/*.ts', {
   eager: true,
@@ -19,6 +20,22 @@ export const catalogItems: RegisteredCatalogItemDefinition[] = Object.entries(de
   .sort((first, second) => first.label.en.localeCompare(second.label.en))
 
 export const catalogItemsByKind = new Map(catalogItems.map((item) => [item.kind, item]))
+
+const floorMaterialDefinitions = import.meta.glob<FloorMaterialDefinition>('./floormaterials/*.json', {
+  eager: true,
+  import: 'default',
+})
+
+export const floorMaterials = Object.values(floorMaterialDefinitions)
+  .sort((first, second) => first.label.en.localeCompare(second.label.en))
+
+export const floorMaterialsByType = new Map(floorMaterials.map((material) => [material.type, material]))
+
+export function getFloorMaterial(type: string): FloorMaterialDefinition {
+  const definition = floorMaterialsByType.get(type)
+  if (!definition) throw new Error(`No floor material definition found for "${type}".`)
+  return definition
+}
 
 export function getCatalogItem(kind: string): RegisteredCatalogItemDefinition {
   const definition = catalogItemsByKind.get(kind)

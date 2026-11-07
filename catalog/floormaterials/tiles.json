@@ -1,0 +1,54 @@
+{
+  "type": "tiles",
+  "label": {
+    "en": "Tiles",
+    "de": "Fliesen"
+  },
+  "pattern": "tiles",
+  "patternSize": [50, 50],
+  "patternLines": [
+    [0, 0, 0, 50],
+    [50, 0, 50, 50],
+    [0, 0, 50, 0],
+    [0, 50, 50, 50]
+  ],
+  "lineWidth": 1.5,
+  "tints": [
+    {
+      "id": "light-grey",
+      "label": {
+        "en": "Light grey",
+        "de": "Hellgrau"
+      },
+      "color": "#c9c9c6",
+      "lineColor": "#999995"
+    },
+    {
+      "id": "dark-grey",
+      "label": {
+        "en": "Dark grey",
+        "de": "Dunkelgrau"
+      },
+      "color": "#777875",
+      "lineColor": "#51524f"
+    },
+    {
+      "id": "black",
+      "label": {
+        "en": "Black",
+        "de": "Schwarz"
+      },
+      "color": "#30312f",
+      "lineColor": "#171816"
+    },
+    {
+      "id": "white",
+      "label": {
+        "en": "White",
+        "de": "Weiß"
+      },
+      "color": "#f0efeb",
+      "lineColor": "#c6c5c0"
+    }
+  ]
+}

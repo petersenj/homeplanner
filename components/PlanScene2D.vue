@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { getCatalogItem } from '~/catalog'
+import { getCatalogItem, getFloorMaterial } from '~/catalog'
 import type { CatalogItem } from '~/catalog/types'
-import type { DragMeasurement, EgoCamera, LiveMeasurement, Measurement, Point, RoomEdge } from '~/types/planner'
+import type { DragMeasurement, EgoCamera, LiveMeasurement, Measurement, Point, RoomEdge, RoomFloor } from '~/types/planner'
 
 type PlanItem = CatalogItem
 
@@ -23,6 +23,7 @@ const props = defineProps<{
   roomDisplayName: (name: string | undefined, index: number) => string
   roomAreaFor: (points: Point[]) => number
   roomWallDimensions: Record<string, { depth: number; height: number }>
+  roomFloors: RoomFloor[]
   showCustomMeasurements: boolean
   measurements: Measurement[]
   fixedSizeLabelTransform: (point: Point, rotation?: number) => string
@@ -93,6 +94,21 @@ let rotationFrame = 0
 const renderItems = computed(() => [...props.items].sort(
   (first, second) => (first.floorOffset ?? 0) + first.height - ((second.floorOffset ?? 0) + second.height),
 ))
+const floorPatterns = computed(() => props.allRooms.map((_, index) => {
+  const floor = props.roomFloors[index]
+  if (!floor?.type) return null
+  const material = getFloorMaterial(floor.type)
+  const tint = material.tints.find((option) => option.id === floor.tint)
+  if (!tint) throw new Error(`Tint "${floor.tint}" is not available for floor material "${floor.type}".`)
+  return {
+    ...floor,
+    ...tint,
+    pattern: material.pattern,
+    patternSize: material.patternSize,
+    patternLines: material.patternLines,
+    lineWidth: material.lineWidth,
+  }
+}))
 
 function showMeasurementDelete(id: number) {
   if (measurementHoverTimeout) clearTimeout(measurementHoverTimeout)
@@ -221,11 +237,29 @@ onBeforeUnmount(() => {
   >
     <defs>
       <pattern id="grid" :width="gridSize" :height="gridSize" patternUnits="userSpaceOnUse"><path :d="`M ${gridSize} 0 L 0 0 0 ${gridSize}`" fill="none" stroke="#a9a7a1" stroke-width="0.8"/></pattern>
+      <template v-for="(floor, index) in floorPatterns" :key="`floor-pattern-${index}`">
+        <pattern
+          v-if="floor"
+          :id="`floor-pattern-${index}`"
+          :width="floor.patternSize[0]"
+          :height="floor.patternSize[1]"
+          patternUnits="userSpaceOnUse"
+          :patternTransform="`rotate(${floor.rotation})`"
+        >
+          <rect width="100%" height="100%" :fill="floor.color"/>
+          <path
+            :d="floor.patternLines.map(([x1, y1, x2, y2]) => `M${x1} ${y1}L${x2} ${y2}`).join('')"
+            fill="none"
+            :stroke="floor.lineColor"
+            :stroke-width="floor.lineWidth"
+          />
+        </pattern>
+      </template>
       <filter id="soft-shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#443a2e" flood-opacity=".09"/></filter>
     </defs>
     <rect :width="viewWidth" :height="viewHeight" fill="#f7f6f2"/>
     <rect v-if="showGrid" :width="viewWidth" :height="viewHeight" fill="url(#grid)"/>
-    <polygon v-for="(room, index) in allRooms" :key="`room-floor-${index}`" :points="room.map((point) => `${point.x},${point.y}`).join(' ')" fill="#f5eee4" stroke="#c6b9a8" stroke-width="1.5"/>
+    <polygon v-for="(room, index) in allRooms" :key="`room-floor-${index}`" :points="room.map((point) => `${point.x},${point.y}`).join(' ')" :fill="floorPatterns[index] ? `url(#floor-pattern-${index})` : '#f5eee4'" stroke="#c6b9a8" stroke-width="1.5"/>
     <g
       v-for="edge in roomEdges"
       :key="`room-edge-${edge.id}`"

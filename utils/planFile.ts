@@ -1,7 +1,8 @@
 import { catalogItemsByKind } from '~/catalog'
 import type { CatalogItem } from '~/catalog/types'
-import type { EgoCamera, Measurement, Point } from '~/types/planner'
+import type { EgoCamera, Measurement, Point, RoomFloor } from '~/types/planner'
 import { defaultEgoCamera } from '~/utils/egoCameraPlan'
+import { parseRoomFloors } from '~/utils/roomFloor'
 
 export type ImportedPlan = {
   items: CatalogItem[]
@@ -9,6 +10,7 @@ export type ImportedPlan = {
   measurements: Measurement[]
   rooms: Point[][]
   roomNames: string[]
+  roomFloors: RoomFloor[]
   egoCamera: EgoCamera
 }
 
@@ -18,6 +20,7 @@ export type PlanFileExport = {
   room: { width: number; depth: number; points: Point[]; area: number }
   rooms: Point[][]
   roomNames: string[]
+  roomFloors: RoomFloor[]
   items: CatalogItem[]
   roomWallDimensions: Record<string, { depth: number; height: number }>
   measurements: Measurement[]
@@ -138,6 +141,7 @@ export function parsePlanFile(value: unknown, isValidRoomLayout: (rooms: Point[]
     typeof importedRoomNames[index] === 'string' && importedRoomNames[index].trim()
       ? importedRoomNames[index]
       : `Room ${index + 1}`)
+  const roomFloors = parseRoomFloors(value.roomFloors, rooms.length)
 
   let egoCamera = defaultEgoCamera(rooms)
   if (value.egoCamera !== undefined) {
@@ -152,7 +156,7 @@ export function parsePlanFile(value: unknown, isValidRoomLayout: (rooms: Point[]
     }
   }
 
-  return { items, roomWallDimensions, measurements, rooms, roomNames, egoCamera }
+  return { items, roomWallDimensions, measurements, rooms, roomNames, roomFloors, egoCamera }
 }
 
 export function downloadPlanFile(plan: PlanFileExport, planName: string) {

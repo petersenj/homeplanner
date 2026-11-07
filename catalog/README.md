@@ -17,3 +17,9 @@ Wall details also set `wallDetailCategory` and `wallMounted`.
 Definitions can customize wall placement, default floor height, wall-snap side,
 and saved-plan migration when needed. See `chair.ts` for a furniture example
 and `window.ts` for a wall-detail example.
+
+Floor materials are discovered from `catalog/floormaterials/*.json`. Each JSON
+file defines a material type, its English and German label, a render pattern,
+its repeat size in centimeters, seam line segments and width, and the available
+named tints with their base and seam colors. Both plan and 3D views use this
+same geometry and repeat size.

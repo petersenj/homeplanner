@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { defineAsyncComponent } from 'vue'
 import HomePlannerImportExport from '~/components/HomePlannerImportExport.vue'
-import { catalogItemsByKind, getCatalogItem } from '~/catalog'
+import { catalogItemsByKind, floorMaterials, getCatalogItem, getFloorMaterial } from '~/catalog'
 import type { CatalogItem, FurnitureSide } from '~/catalog/types'
-import type { CameraSnapshot, DragMeasurement, EgoCamera, Measurement, Point, RoomEdge } from '~/types/planner'
+import type { CameraSnapshot, DragMeasurement, EgoCamera, Measurement, Point, RoomEdge, RoomFloor } from '~/types/planner'
 import type { ImportedPlan } from '~/utils/planFile'
 import { defaultEgoCamera } from '~/utils/egoCameraPlan'
+import { defaultRoomFloor, parseRoomFloors } from '~/utils/roomFloor'
 
 const RoomScene3D = defineAsyncComponent(() => import('~/components/RoomScene3D.vue'))
 const PlanScene2D = defineAsyncComponent(() => import('~/components/PlanScene2D.vue'))
@@ -49,11 +50,13 @@ const isEgoCameraSelected = ref(false)
 const activeTool = ref<'select' | 'room' | 'addRoom' | 'measure' | 'window' | 'door' | 'cube' | 'furniture'>('select')
 const selectedId = ref<number | null>(null)
 const selectedWallId = ref<string | null>(null)
+const roomAppearanceIndex = ref<number | null>(null)
 const pendingPoint = ref<Point | null>(null)
 const measurementCursor = ref<Point | null>(null)
 const roomPoints = ref<Point[]>(defaultRoomPoints.map((point) => ({ ...point })))
 const additionalRoomPoints = ref<Point[][]>([])
 const roomNames = ref<string[]>(['Room 1'])
+const roomFloors = ref<RoomFloor[]>([defaultRoomFloor()])
 const drawingRoomPoints = ref<Point[]>([])
 const drawingCursor = ref<Point | null>(null)
 const drawingCursorClosesRoom = ref(false)
@@ -115,6 +118,28 @@ const selectedItemOpenable = computed(() => selectedItem.value ? getCatalogItem(
 const selectedSurfaceColor = computed(() => selectedItem.value
   ? selectedItem.value.color ?? itemColor(selectedItem.value.kind)
   : '')
+const selectedRoomFloor = computed(() => {
+  const index = roomAppearanceIndex.value
+  const floor = index === null ? null : roomFloors.value[index]
+  if (index === null || !floor || !allRooms.value[index]) return null
+  return {
+    index,
+    name: roomDisplayName(roomNames.value[index], index),
+    ...floor,
+  }
+})
+const floorTypeOptions = computed(() => floorMaterials.map((material) => ({
+  id: material.type,
+  label: material.label[language.value],
+})))
+const floorTintOptions = computed(() => {
+  if (!selectedRoomFloor.value?.type) return []
+  return getFloorMaterial(selectedRoomFloor.value.type).tints.map((tint) => ({
+    id: tint.id,
+    label: tint.label[language.value],
+    color: tint.color,
+  }))
+})
 const selectedRoomWall = computed(() => {
   const edge = roomEdges.value.find((roomEdge) => roomEdge.id === selectedWallId.value)
   if (!edge) return null
@@ -1465,6 +1490,7 @@ function egoCameraPointerDown(event: PointerEvent) {
 function selectEgoCamera() {
   selectedId.value = null
   selectedWallId.value = null
+  roomAppearanceIndex.value = null
   isEgoCameraSelected.value = true
 }
 
@@ -1472,18 +1498,21 @@ function setEgoCameraSelected(selected: boolean) {
   if (selected) {
     selectedId.value = null
     selectedWallId.value = null
+    roomAppearanceIndex.value = null
   }
   isEgoCameraSelected.value = selected
 }
 
 function selectItem(id: number | null) {
   selectedWallId.value = null
+  roomAppearanceIndex.value = null
   isEgoCameraSelected.value = false
   selectedId.value = id
 }
 
 function selectRoomWall(id: string | null) {
   selectedId.value = null
+  roomAppearanceIndex.value = null
   isEgoCameraSelected.value = false
   selectedWallId.value = id
 }
@@ -1660,6 +1689,7 @@ function confirmNewFloorplan() {
   items.value = []
   roomWallDimensions.value = {}
   measurements.value = []
+  roomFloors.value = []
   roomPoints.value = []
   additionalRoomPoints.value = []
   roomNames.value = []
@@ -1672,6 +1702,7 @@ function confirmNewFloorplan() {
   measurementCursor.value = null
   selectedId.value = null
   selectedWallId.value = null
+  roomAppearanceIndex.value = null
   isEgoCameraSelected.value = false
   activeTool.value = 'room'
   view.value = '2d'
@@ -1696,6 +1727,7 @@ function finishRoomDrawing() {
   isEgoCameraSelected.value = false
   additionalRoomPoints.value = []
   roomNames.value = ['Room 1']
+  roomFloors.value = [defaultRoomFloor()]
   items.value = []
   roomWallDimensions.value = {}
   measurements.value = []
@@ -1712,6 +1744,7 @@ function beginRoomAddition() {
   clearCanvasDraft()
   selectedId.value = null
   selectedWallId.value = null
+  roomAppearanceIndex.value = null
   isEgoCameraSelected.value = false
   activeTool.value = allRooms.value.length ? 'addRoom' : 'room'
   view.value = '2d'
@@ -1763,6 +1796,7 @@ function finishRoomAddition(endPoint: Point) {
   candidates.sort((first, second) => roomAreaFor(first) - roomAreaFor(second))
   additionalRoomPoints.value.push(candidates[0]!)
   roomNames.value.push(`Room ${allRooms.value.length}`)
+  roomFloors.value.push(defaultRoomFloor())
   drawingRoomPoints.value = []
   drawingCursor.value = null
   drawingCursorClosesRoom.value = false
@@ -1877,6 +1911,7 @@ const exportPlanData = computed(() => ({
   },
   rooms: allRooms.value,
   roomNames: roomNames.value,
+  roomFloors: roomFloors.value,
   items: items.value,
   roomWallDimensions: roomWallDimensions.value,
   measurements: measurements.value,
@@ -1893,11 +1928,13 @@ const importedPlanModel = computed<ImportedPlan | null>({
     roomPoints.value = plan.rooms[0] ?? []
     additionalRoomPoints.value = plan.rooms.slice(1)
     roomNames.value = plan.roomNames
+    roomFloors.value = plan.roomFloors
     egoCamera.value = plan.egoCamera
     isEgoCameraSelected.value = false
     nextId.value = Math.max(10, ...plan.items.map((item) => item.id + 1), ...plan.measurements.map((measurement) => measurement.id + 1))
     selectedId.value = null
     selectedWallId.value = null
+    roomAppearanceIndex.value = null
     clearCanvasDraft()
     activeTool.value = 'select'
   },
@@ -1924,6 +1961,42 @@ function roomDisplayName(name: string | undefined, index: number) {
 
 function updateRoomName(index: number, event: Event) {
   if (event.target instanceof HTMLInputElement) roomNames.value[index] = event.target.value
+}
+
+function openRoomAppearance(index: number) {
+  selectedId.value = null
+  selectedWallId.value = null
+  isEgoCameraSelected.value = false
+  roomAppearanceIndex.value = index
+}
+
+function updateRoomFloorType(index: number, type: string | null) {
+  const currentFloor = roomFloors.value[index]
+  if (!currentFloor) return
+  if (type === null) {
+    roomFloors.value[index] = { ...currentFloor, type: null }
+    return
+  }
+  const material = getFloorMaterial(type)
+  const tint = material.tints.find((option) => option.id === currentFloor.tint) ?? material.tints[0]
+  if (!tint) throw new Error(`Floor material "${type}" does not define a tint.`)
+  roomFloors.value[index] = { ...currentFloor, type, tint: tint.id }
+}
+
+function updateRoomFloorTint(index: number, tint: string) {
+  const currentFloor = roomFloors.value[index]
+  if (!currentFloor?.type) return
+  const material = getFloorMaterial(currentFloor.type)
+  if (!material.tints.some((option) => option.id === tint)) {
+    throw new Error(`Tint "${tint}" is not available for floor material "${currentFloor.type}".`)
+  }
+  roomFloors.value[index] = { ...currentFloor, tint }
+}
+
+function updateRoomFloorRotation(index: number, rotation: number) {
+  const currentFloor = roomFloors.value[index]
+  if (!currentFloor || !Number.isFinite(rotation)) return
+  roomFloors.value[index] = { ...currentFloor, rotation: (rotation % 360 + 360) % 360 }
 }
 
 function onLanguageChange(event: Event) {
@@ -2096,7 +2169,7 @@ onMounted(() => {
   const savedPlan = window.localStorage.getItem('floorwise-plan-v1') ?? window.localStorage.getItem('roomwise-plan-v1')
   if (savedPlan) {
     try {
-      const plan = JSON.parse(savedPlan) as { items?: Array<Partial<PlanItem> & Pick<PlanItem, 'id' | 'kind' | 'x' | 'y' | 'width' | 'depth' | 'height' | 'rotation'> & { rearSide?: unknown; doorOpen?: boolean; windowOpen?: boolean; windowOpenWings?: 'closed' | 'left' | 'right' | 'both' }>; roomWallDimensions?: Record<string, { depth?: number; height?: number }>; measurements?: Measurement[]; roomPoints?: Point[]; rooms?: Point[][]; roomNames?: string[]; egoCamera?: EgoCamera }
+      const plan = JSON.parse(savedPlan) as { items?: Array<Partial<PlanItem> & Pick<PlanItem, 'id' | 'kind' | 'x' | 'y' | 'width' | 'depth' | 'height' | 'rotation'> & { rearSide?: unknown; doorOpen?: boolean; windowOpen?: boolean; windowOpenWings?: 'closed' | 'left' | 'right' | 'both' }>; roomWallDimensions?: Record<string, { depth?: number; height?: number }>; measurements?: Measurement[]; roomPoints?: Point[]; rooms?: Point[][]; roomNames?: string[]; roomFloors?: unknown; egoCamera?: EgoCamera }
       if (Array.isArray(plan.items) && Array.isArray(plan.measurements)) {
         items.value = plan.items.map(({ rearSide: _rearSide, doorOpen, windowOpen, windowOpenWings, ...savedItem }) => {
           const legacyOpen = doorOpen ?? windowOpen
@@ -2130,6 +2203,7 @@ onMounted(() => {
           typeof plan.roomNames?.[index] === 'string' && plan.roomNames[index]!.trim()
             ? plan.roomNames[index]!
             : `Room ${index + 1}`)
+        roomFloors.value = parseRoomFloors(plan.roomFloors, allRooms.value.length)
         egoCamera.value = plan.egoCamera
           && Number.isFinite(plan.egoCamera.x)
           && Number.isFinite(plan.egoCamera.y)
@@ -2156,7 +2230,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('blur', onWindowBlur)
   stopKeyboardMovement()
 })
-watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints, roomNames, egoCamera], () => {
+watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints, roomNames, roomFloors, egoCamera], () => {
   if (import.meta.client) {
     window.localStorage.setItem('floorwise-plan-v1', JSON.stringify({
       items: items.value,
@@ -2165,6 +2239,7 @@ watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints
       roomPoints: roomPoints.value,
       rooms: allRooms.value,
       roomNames: roomNames.value,
+      roomFloors: roomFloors.value,
       egoCamera: egoCamera.value,
     }))
   }
@@ -2215,6 +2290,15 @@ watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints
               <span class="room-dot"></span>
               <input :value="roomDisplayName(roomNames[index], index)" class="room-name-input" :aria-label="`${roomDisplayName(undefined, index)} ${t('name')}`" :placeholder="roomDisplayName(undefined, index)" @input="updateRoomName(index, $event)">
               <span class="room-item-count" :aria-label="`${roomItems[index]?.items.length || 0} ${t('furniture and objects')}`">{{ roomItems[index]?.items.length || 0 }}</span>
+              <button
+                class="room-appearance-button"
+                type="button"
+                :aria-label="`${t('Edit flooring for')} ${roomDisplayName(roomNames[index], index)}`"
+                :title="t('Set room appearance')"
+                @click="openRoomAppearance(index)"
+              >
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8.2 2.2h3.6l.5 2a6 6 0 0 1 1.3.8l1.9-.7 1.8 3.1-1.5 1.4a6 6 0 0 1 0 1.6l1.5 1.4-1.8 3.1-1.9-.7a6 6 0 0 1-1.3.8l-.5 2H8.2l-.5-2a6 6 0 0 1-1.3-.8l-1.9.7-1.8-3.1 1.5-1.4a6 6 0 0 1 0-1.6L2.7 7.4l1.8-3.1 1.9.7a6 6 0 0 1 1.3-.8l.5-2Z"/><circle cx="10" cy="9.6" r="2.3"/></svg>
+              </button>
               <button
                 class="room-expand-button"
                 :aria-expanded="isRoomItemListExpanded(index)"
@@ -2317,6 +2401,7 @@ watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints
             :room-names="roomNames"
             :room-display-name="roomDisplayName"
             :room-area-for="roomAreaFor"
+            :room-floors="roomFloors"
             :room-wall-dimensions="roomWallDimensions"
             :show-custom-measurements="showCustomMeasurements"
             :measurements="measurements"
@@ -2368,6 +2453,7 @@ watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints
               :items="items"
               :room-wall-dimensions="roomWallDimensions"
               :rooms="allRooms"
+              :room-floors="roomFloors"
               :room-width="roomBounds.width"
               :room-depth="roomBounds.height"
               :room-x="roomBounds.x"
@@ -2398,15 +2484,18 @@ watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints
         <div class="canvas-footer"><AppKeyboardMouseAid :view="view" :t="t" /><span v-if="canvasActionError" role="status">{{ t(canvasActionError) }}</span><span>{{ placedCount }} {{ t('objects') }}</span><span class="footer-separator">·</span><span>{{ totalArea }} m² {{ t('floor area') }}</span><span class="footer-spacer"></span><button @click="clearPlan">{{ t('Reset plan') }}</button></div>
       </div>
       <HomePlannerInspector
-        v-if="selectedItem || selectedRoomWall"
+        v-if="selectedItem || selectedRoomWall || selectedRoomFloor"
         :item="selectedItem"
         :wall="selectedRoomWall"
+        :room-floor="selectedRoomFloor"
+        :floor-type-options="floorTypeOptions"
+        :floor-tint-options="floorTintOptions"
         :surface-colors="selectedSurfaceColors"
         :selected-surface-color="selectedSurfaceColor"
         :openable="selectedItemOpenable"
         :t="t"
         :item-label="itemLabel"
-        @close="selectedId = null; selectedWallId = null"
+        @close="selectedId = null; selectedWallId = null; roomAppearanceIndex = null"
         @rotate="rotateSelected"
         @rotation-change="updateSelectedRotation"
         @surface-color-change="updateSelectedSurfaceColor"
@@ -2414,6 +2503,9 @@ watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints
         @wall-length-change="selectedRoomWall && updateRoomWallLength(selectedRoomWall.edge.id, $event)"
         @wall-depth-change="selectedRoomWall && updateRoomWallDimension(selectedRoomWall.edge.id, 'depth', $event)"
         @wall-height-change="selectedRoomWall && updateRoomWallDimension(selectedRoomWall.edge.id, 'height', $event)"
+        @floor-type-change="selectedRoomFloor && updateRoomFloorType(selectedRoomFloor.index, $event)"
+        @floor-tint-change="selectedRoomFloor && updateRoomFloorTint(selectedRoomFloor.index, $event)"
+        @floor-rotation-change="selectedRoomFloor && updateRoomFloorRotation(selectedRoomFloor.index, $event)"
         @remove="removeSelected"
       />
       <div v-if="activeTool === 'cube' && view === '2d'" class="placement-tip">{{ t('Click anywhere in the room to place your cube') }} <button @click="selectTool('select')">{{ t('Cancel') }}</button></div>
@@ -2522,6 +2614,9 @@ button { color: inherit; cursor: pointer; }
 .room-name-input:focus, .plan-name-input:focus { box-shadow: 0 1px 0 #8ea18d; }
 .room-name-input::placeholder, .plan-name-input::placeholder { color: #8a9485; }
 .room-item-count { min-width: 17px; height: 17px; display: grid; place-items: center; border-radius: 5px; background: #e6ece3; color: #697d68; font-size: 9px; font-weight: 600; }
+.room-appearance-button { width: 21px; height: 22px; flex: 0 0 21px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 4px; background: transparent; color: #788477; cursor: pointer; }
+.room-appearance-button:hover, .room-appearance-button:focus-visible { background: #e5ebe2; color: #526c59; }
+.room-appearance-button svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
 .room-expand-button { width: 19px; height: 22px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 4px; background: transparent; }
 .room-expand-button:hover:not(:disabled) { background: #e5ebe2; }
 .room-expand-button:disabled { opacity: .35; cursor: default; }

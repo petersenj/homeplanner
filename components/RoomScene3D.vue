@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
-import { getCatalogItem } from '~/catalog'
+import { getCatalogItem, getFloorMaterial } from '~/catalog'
 import { addLegs, box } from '~/catalog/scene'
 import { isEgoCameraPointInsideRooms } from '~/utils/egoCameraPlan'
 import { createEgoCameraModel, setEgoCameraModelSelected } from '~/utils/roomSceneEgoCamera'
@@ -9,7 +9,7 @@ import { RoomSceneFirstPersonController } from '~/utils/roomSceneFirstPerson'
 import { pickRoomSceneSelection } from '~/utils/roomSceneSelection'
 import { firstPersonInteractions, keyboardKeySymbols } from '~/data/keyboardMouseInteractions'
 import type { CatalogItem } from '~/catalog/types'
-import type { CameraSnapshot, CameraVector, EgoCamera, Point } from '~/types/planner'
+import type { CameraSnapshot, CameraVector, EgoCamera, Point, RoomFloor } from '~/types/planner'
 const { language, t } = useAppLanguage()
 
 type RoomItem = CatalogItem
@@ -18,6 +18,7 @@ const props = defineProps<{
   items: RoomItem[]
   roomWallDimensions: Record<string, { depth: number; height: number }>
   rooms: Point[][]
+  roomFloors: RoomFloor[]
   roomWidth: number
   roomDepth: number
   roomX: number
@@ -152,11 +153,46 @@ function material(color: THREE.ColorRepresentation, roughness = 0.82, options: T
   return new THREE.MeshStandardMaterial(parameters)
 }
 
+function createFloorTexture(floor: RoomFloor) {
+  if (!floor.type) return null
+  const definition = getFloorMaterial(floor.type)
+  const tint = definition.tints.find((option) => option.id === floor.tint)
+  if (!tint) throw new Error(`Tint "${floor.tint}" is not available for floor material "${floor.type}".`)
+
+  const pixelsPerCentimeter = 4
+  const [patternWidth, patternHeight] = definition.patternSize
+  const canvas = document.createElement('canvas')
+  canvas.width = patternWidth * pixelsPerCentimeter
+  canvas.height = patternHeight * pixelsPerCentimeter
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('Could not create a 2D canvas context for the floor material.')
+  context.fillStyle = tint.color
+  context.fillRect(0, 0, canvas.width, canvas.height)
+  context.strokeStyle = tint.lineColor
+  context.lineWidth = definition.lineWidth * pixelsPerCentimeter
+  context.beginPath()
+  for (const [x1, y1, x2, y2] of definition.patternLines) {
+    context.moveTo(x1 * pixelsPerCentimeter, y1 * pixelsPerCentimeter)
+    context.lineTo(x2 * pixelsPerCentimeter, y2 * pixelsPerCentimeter)
+  }
+  context.stroke()
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.wrapS = THREE.RepeatWrapping
+  texture.wrapT = THREE.RepeatWrapping
+  texture.repeat.set(100 / patternWidth, 100 / patternHeight)
+  texture.center.set(0.5, 0.5)
+  texture.rotation = floor.rotation * Math.PI / 180
+  return texture
+}
+
 function addRoom() {
   if (!content) return
   const width = roomWidthM.value
   const depth = roomDepthM.value
   const wallThickness = 0.12
+  const hasFloorMaterial = props.roomFloors.some((floor) => floor.type !== null)
   const perimeterSegments: Array<{ roomIndex: number; start: Point; end: Point; key: string; id: string }> = []
   const edgeCounts = new Map<string, number>()
   const roomVertices = props.rooms.flat()
@@ -194,9 +230,11 @@ function addRoom() {
     shape.moveTo(first.x, -first.z)
     for (const point of points.slice(1)) shape.lineTo(point.x, -point.z)
     shape.closePath()
+    const roomFloor = props.roomFloors[roomIndex]
+    const floorTexture = roomFloor ? createFloorTexture(roomFloor) : null
     const floor = new THREE.Mesh(
       new THREE.ShapeGeometry(shape),
-      material('#eae3d8', 0.96),
+      material('#eae3d8', 0.96, floorTexture ? { map: floorTexture, color: '#ffffff' } : {}),
     )
     floor.rotation.x = -Math.PI / 2
     floor.receiveShadow = true
@@ -210,7 +248,7 @@ function addRoom() {
     const rectangular = points.length === 4 && points.every((point) =>
       (Math.abs(point.x - minX) < 0.001 || Math.abs(point.x - maxX) < 0.001)
       && (Math.abs(point.z - minZ) < 0.001 || Math.abs(point.z - maxZ) < 0.001))
-    if (rectangular && !gridAdded) {
+    if (rectangular && !gridAdded && !hasFloorMaterial) {
       const grid = new THREE.GridHelper(Math.max(width, depth), Math.round(Math.max(width, depth) * 4), '#d9d1c5', '#e1dbd1')
       grid.position.y = -0.015
       content.add(grid)
@@ -376,7 +414,10 @@ function disposeGroup(group: THREE.Group) {
     if (object instanceof THREE.Mesh) {
       object.geometry.dispose()
       const materials = Array.isArray(object.material) ? object.material : [object.material]
-      for (const meshMaterial of materials) meshMaterial.dispose()
+      for (const meshMaterial of materials) {
+        meshMaterial.map?.dispose()
+        meshMaterial.dispose()
+      }
     } else if (object instanceof THREE.LineSegments) {
       object.geometry.dispose()
       const materials = Array.isArray(object.material) ? object.material : [object.material]
@@ -939,6 +980,7 @@ watch(() => [
   props.items.map((item) => [item.id, item.kind, item.section, item.wallDetailCategory, item.x, item.y, item.width, item.depth, item.height, item.floorOffset, item.name, item.color, item.open]),
   props.roomWallDimensions,
   props.rooms,
+  props.roomFloors,
   props.selectedId,
   props.selectedWallId,
   props.roomWidth,

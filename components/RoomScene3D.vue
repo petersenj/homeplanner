@@ -239,7 +239,7 @@ function addRoom() {
     )
     floor.rotation.x = -Math.PI / 2
     floor.receiveShadow = true
-    floor.position.y = -0.025
+    floor.position.y = 0
     content.add(floor)
 
     const minX = Math.min(...points.map((point) => point.x))
@@ -251,7 +251,7 @@ function addRoom() {
       && (Math.abs(point.z - minZ) < 0.001 || Math.abs(point.z - maxZ) < 0.001))
     if (rectangular && !gridAdded && !hasFloorMaterial) {
       const grid = new THREE.GridHelper(Math.max(width, depth), Math.round(Math.max(width, depth) * 4), '#d9d1c5', '#e1dbd1')
-      grid.position.y = -0.015
+      grid.position.y = 0.005
       content.add(grid)
       gridAdded = true
     }

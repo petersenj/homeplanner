@@ -465,7 +465,7 @@ function updatePerimeterWallVisibility() {
   camera.updateMatrixWorld()
   const cameraPosition = camera.getWorldPosition(new THREE.Vector3())
   for (const wall of perimeterWalls) {
-    if (showCameraFacingWalls.value) {
+    if (isFirstPersonMode.value || showCameraFacingWalls.value) {
       wall.group.visible = true
       continue
     }
@@ -1106,6 +1106,7 @@ onBeforeUnmount(() => {
       <span>{{ roomWidthM.toFixed(2) }} × {{ roomDepthM.toFixed(2) }} m</span>
     </div>
     <button
+      v-if="!isFirstPersonMode"
       class="scene-walls-toggle"
       type="button"
       :aria-pressed="showCameraFacingWalls"
@@ -1114,6 +1115,7 @@ onBeforeUnmount(() => {
       {{ t(showCameraFacingWalls ? 'Hide camera-facing walls' : 'Show camera-facing walls') }}
     </button>
     <button
+      v-if="!isFirstPersonMode"
       class="scene-top-view-toggle"
       type="button"
       :aria-pressed="isTopDownView"
@@ -1123,6 +1125,7 @@ onBeforeUnmount(() => {
       {{ t(isTopDownView ? 'Exit top-down view' : 'Top-down · North up') }}
     </button>
     <button
+      v-if="!isFirstPersonMode"
       class="scene-first-person-toggle"
       type="button"
       :aria-pressed="isFirstPersonMode"
@@ -1136,7 +1139,7 @@ onBeforeUnmount(() => {
       <strong>{{ selectedItem.name || getCatalogItem(selectedItem.kind).label[language] }}</strong>
       <small>{{ selectedItem.width }} × {{ selectedItem.depth }} × {{ selectedItem.height }} cm</small>
     </div>
-    <button class="scene-reset" :aria-label="t('Reset 3D camera')" :title="t('Reset camera view')" @click="resetCamera">↗ <span>{{ t('Reset view') }}</span></button>
-    <button class="scene-fullscreen" :aria-label="t(isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen')" :title="t(isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen')" @click="toggleFullscreen">{{ isFullscreen ? '↙' : '⛶' }} <span>{{ t(isFullscreen ? 'Exit fullscreen' : 'Fullscreen') }}</span></button>
+    <button v-if="!isFirstPersonMode" class="scene-reset" :aria-label="t('Reset 3D camera')" :title="t('Reset camera view')" @click="resetCamera">↗ <span>{{ t('Reset view') }}</span></button>
+    <button v-if="!isFirstPersonMode" class="scene-fullscreen" :aria-label="t(isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen')" :title="t(isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen')" @click="toggleFullscreen">{{ isFullscreen ? '↙' : '⛶' }} <span>{{ t(isFullscreen ? 'Exit fullscreen' : 'Fullscreen') }}</span></button>
   </div>
 </template>

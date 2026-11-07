@@ -2,6 +2,7 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { getCatalogItem, getFloorMaterial } from '~/catalog'
+import { getFloorPatternGeometry } from '~/catalog/floorPattern'
 import { addLegs, box } from '~/catalog/scene'
 import { isEgoCameraPointInsideRooms } from '~/utils/egoCameraPlan'
 import { createEgoCameraModel, setEgoCameraModelSelected } from '~/utils/roomSceneEgoCamera'
@@ -158,12 +159,12 @@ function createFloorTexture(floor: RoomFloor) {
   const definition = getFloorMaterial(floor.type)
   const tint = definition.tints.find((option) => option.id === floor.tint)
   if (!tint) throw new Error(`Tint "${floor.tint}" is not available for floor material "${floor.type}".`)
+  const geometry = getFloorPatternGeometry(definition, floor)
 
-  const pixelsPerCentimeter = 4
-  const [patternWidth, patternHeight] = definition.patternSize
+  const pixelsPerCentimeter = Math.min(4, 2048 / Math.max(geometry.width, geometry.height))
   const canvas = document.createElement('canvas')
-  canvas.width = patternWidth * pixelsPerCentimeter
-  canvas.height = patternHeight * pixelsPerCentimeter
+  canvas.width = geometry.width * pixelsPerCentimeter
+  canvas.height = geometry.height * pixelsPerCentimeter
   const context = canvas.getContext('2d')
   if (!context) throw new Error('Could not create a 2D canvas context for the floor material.')
   context.fillStyle = tint.color
@@ -171,7 +172,7 @@ function createFloorTexture(floor: RoomFloor) {
   context.strokeStyle = tint.lineColor
   context.lineWidth = definition.lineWidth * pixelsPerCentimeter
   context.beginPath()
-  for (const [x1, y1, x2, y2] of definition.patternLines) {
+  for (const [x1, y1, x2, y2] of geometry.lines) {
     context.moveTo(x1 * pixelsPerCentimeter, y1 * pixelsPerCentimeter)
     context.lineTo(x2 * pixelsPerCentimeter, y2 * pixelsPerCentimeter)
   }
@@ -181,7 +182,7 @@ function createFloorTexture(floor: RoomFloor) {
   texture.colorSpace = THREE.SRGBColorSpace
   texture.wrapS = THREE.RepeatWrapping
   texture.wrapT = THREE.RepeatWrapping
-  texture.repeat.set(100 / patternWidth, 100 / patternHeight)
+  texture.repeat.set(100 / geometry.width, 100 / geometry.height)
   texture.center.set(0.5, 0.5)
   texture.rotation = floor.rotation * Math.PI / 180
   return texture

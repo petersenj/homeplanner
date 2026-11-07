@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { getCatalogItem, getFloorMaterial } from '~/catalog'
+import { getFloorPatternGeometry } from '~/catalog/floorPattern'
 import type { CatalogItem } from '~/catalog/types'
 import type { DragMeasurement, EgoCamera, LiveMeasurement, Measurement, Point, RoomEdge, RoomFloor } from '~/types/planner'
 
@@ -100,12 +101,13 @@ const floorPatterns = computed(() => props.allRooms.map((_, index) => {
   const material = getFloorMaterial(floor.type)
   const tint = material.tints.find((option) => option.id === floor.tint)
   if (!tint) throw new Error(`Tint "${floor.tint}" is not available for floor material "${floor.type}".`)
+  const geometry = getFloorPatternGeometry(material, floor)
   return {
     ...floor,
     ...tint,
-    pattern: material.pattern,
-    patternSize: material.patternSize,
-    patternLines: material.patternLines,
+    patternWidth: geometry.width,
+    patternHeight: geometry.height,
+    patternLines: geometry.lines,
     lineWidth: material.lineWidth,
   }
 }))
@@ -241,8 +243,8 @@ onBeforeUnmount(() => {
         <pattern
           v-if="floor"
           :id="`floor-pattern-${index}`"
-          :width="floor.patternSize[0]"
-          :height="floor.patternSize[1]"
+          :width="floor.patternWidth"
+          :height="floor.patternHeight"
           patternUnits="userSpaceOnUse"
           :patternTransform="`rotate(${floor.rotation})`"
         >

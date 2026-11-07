@@ -5,13 +5,8 @@
     "de": "Fliesen"
   },
   "pattern": "tiles",
-  "patternSize": [50, 50],
-  "patternLines": [
-    [0, 0, 0, 50],
-    [50, 0, 50, 50],
-    [0, 0, 50, 0],
-    [0, 50, 50, 50]
-  ],
+  "tileSize": [50, 50],
+  "offsetPercent": 0,
   "lineWidth": 1.5,
   "tints": [
     {

@@ -2,6 +2,7 @@
 import { defineAsyncComponent } from 'vue'
 import HomePlannerImportExport from '~/components/HomePlannerImportExport.vue'
 import { catalogItemsByKind, floorMaterials, getCatalogItem, getFloorMaterial } from '~/catalog'
+import { getFloorPatternGeometry } from '~/catalog/floorPattern'
 import type { CatalogItem, FurnitureSide } from '~/catalog/types'
 import type { CameraSnapshot, DragMeasurement, EgoCamera, Measurement, Point, RoomEdge, RoomFloor } from '~/types/planner'
 import type { ImportedPlan } from '~/utils/planFile'
@@ -128,10 +129,21 @@ const selectedRoomFloor = computed(() => {
     ...floor,
   }
 })
-const floorTypeOptions = computed(() => floorMaterials.map((material) => ({
-  id: material.type,
-  label: material.label[language.value],
-})))
+const floorTypeOptions = computed(() => floorMaterials.map((material) => {
+  const tint = material.tints[0]
+  if (!tint) throw new Error(`Floor material "${material.type}" does not define a tint.`)
+  const geometry = getFloorPatternGeometry(material)
+  return {
+    id: material.type,
+    label: material.label[language.value],
+    color: tint.color,
+    lineColor: tint.lineColor,
+    width: geometry.width,
+    height: geometry.height,
+    lines: geometry.lines.map(([x1, y1, x2, y2]) => `M${x1} ${y1}L${x2} ${y2}`).join(''),
+    rotation: 0,
+  }
+}))
 const floorTintOptions = computed(() => {
   if (!selectedRoomFloor.value?.type) return []
   return getFloorMaterial(selectedRoomFloor.value.type).tints.map((tint) => ({
@@ -1850,7 +1862,7 @@ function removeMeasurement(id: number) {
 
 function rotateSelected() {
   if (!selectedItem.value) return
-  selectedItem.value.rotation = normalizeRotation(selectedItem.value.rotation + (isWallOpening(selectedItem.value) ? 180 : 90))
+  selectedItem.value.rotation = normalizeRotation(selectedItem.value.rotation + (isWallOpening(selectedItem.value) ? 180 : 45))
 }
 
 function updateSelectedRotation(rotation: number) {
@@ -1963,6 +1975,13 @@ function updateRoomName(index: number, event: Event) {
   if (event.target instanceof HTMLInputElement) roomNames.value[index] = event.target.value
 }
 
+function roomFloorTintColor(index: number) {
+  const floor = roomFloors.value[index]
+  if (!floor?.type) return undefined
+  const material = getFloorMaterial(floor.type)
+  return material.tints.find((tint) => tint.id === floor.tint)?.color
+}
+
 function openRoomAppearance(index: number) {
   selectedId.value = null
   selectedWallId.value = null
@@ -1980,7 +1999,14 @@ function updateRoomFloorType(index: number, type: string | null) {
   const material = getFloorMaterial(type)
   const tint = material.tints.find((option) => option.id === currentFloor.tint) ?? material.tints[0]
   if (!tint) throw new Error(`Floor material "${type}" does not define a tint.`)
-  roomFloors.value[index] = { ...currentFloor, type, tint: tint.id }
+  roomFloors.value[index] = {
+    ...currentFloor,
+    type,
+    tint: tint.id,
+    tileWidth: material.tileSize[0],
+    tileHeight: material.tileSize[1],
+    offsetPercent: material.offsetPercent,
+  }
 }
 
 function updateRoomFloorTint(index: number, tint: string) {
@@ -1997,6 +2023,15 @@ function updateRoomFloorRotation(index: number, rotation: number) {
   const currentFloor = roomFloors.value[index]
   if (!currentFloor || !Number.isFinite(rotation)) return
   roomFloors.value[index] = { ...currentFloor, rotation: (rotation % 360 + 360) % 360 }
+}
+
+function updateRoomFloorPattern(index: number, property: 'tileWidth' | 'tileHeight' | 'offsetPercent', value: number) {
+  const floor = roomFloors.value[index]
+  if (!floor || !Number.isFinite(value)) return
+  const minimum = property === 'offsetPercent' ? 0 : 1
+  const maximum = property === 'offsetPercent' ? 100 : 1000
+  if (value < minimum || value > maximum) return
+  roomFloors.value[index] = { ...floor, [property]: value }
 }
 
 function onLanguageChange(event: Event) {
@@ -2287,7 +2322,7 @@ watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints
           <div class="section-heading"><span class="section-eyebrow">{{ t('FLOORPLAN') }}</span></div>
           <div v-for="(room, index) in allRooms" :key="`room-${index}`" class="room-entry">
             <div class="room-row active-room">
-              <span class="room-dot"></span>
+              <span class="room-dot" :style="{ background: roomFloorTintColor(index) }"></span>
               <input :value="roomDisplayName(roomNames[index], index)" class="room-name-input" :aria-label="`${roomDisplayName(undefined, index)} ${t('name')}`" :placeholder="roomDisplayName(undefined, index)" @input="updateRoomName(index, $event)">
               <span class="room-item-count" :aria-label="`${roomItems[index]?.items.length || 0} ${t('furniture and objects')}`">{{ roomItems[index]?.items.length || 0 }}</span>
               <button
@@ -2506,6 +2541,7 @@ watch([items, roomWallDimensions, measurements, roomPoints, additionalRoomPoints
         @floor-type-change="selectedRoomFloor && updateRoomFloorType(selectedRoomFloor.index, $event)"
         @floor-tint-change="selectedRoomFloor && updateRoomFloorTint(selectedRoomFloor.index, $event)"
         @floor-rotation-change="selectedRoomFloor && updateRoomFloorRotation(selectedRoomFloor.index, $event)"
+        @floor-pattern-change="selectedRoomFloor && updateRoomFloorPattern(selectedRoomFloor.index, $event.property, $event.value)"
         @remove="removeSelected"
       />
       <div v-if="activeTool === 'cube' && view === '2d'" class="placement-tip">{{ t('Click anywhere in the room to place your cube') }} <button @click="selectTool('select')">{{ t('Cancel') }}</button></div>

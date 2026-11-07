@@ -20,6 +20,6 @@ and `window.ts` for a wall-detail example.
 
 Floor materials are discovered from `catalog/floormaterials/*.json`. Each JSON
 file defines a material type, its English and German label, a render pattern,
-its repeat size in centimeters, seam line segments and width, and the available
-named tints with their base and seam colors. Both plan and 3D views use this
-same geometry and repeat size.
+its default tile size in centimeters, row offset percentage, seam width, and
+available named tints. Room-specific tile size and row offset are saved with
+the plan. Both plan and 3D views use the same generated geometry and repeat size.

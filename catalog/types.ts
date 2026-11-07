@@ -19,8 +19,8 @@ export type FloorMaterialDefinition = {
   type: string
   label: Record<CatalogLanguage, string>
   pattern: FloorMaterialPattern
-  patternSize: [width: number, height: number]
-  patternLines: Array<[x1: number, y1: number, x2: number, y2: number]>
+  tileSize: [width: number, height: number]
+  offsetPercent: number
   lineWidth: number
   tints: FloorMaterialTint[]
 }

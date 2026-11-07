@@ -3,9 +3,26 @@ import type { CatalogItem } from '~/catalog/types'
 
 type PlanItem = Pick<CatalogItem, 'kind' | 'section' | 'wallDetailCategory' | 'name' | 'width' | 'depth' | 'height' | 'rotation' | 'floorOffset' | 'color' | 'open'>
 type WallInspector = { length: number; minimumLength: number; depth: number; height: number }
-type RoomFloorInspector = { name: string; type: string | null; tint: string; rotation: number }
-type FloorOption = { id: string; label: string }
-type FloorTintOption = FloorOption & { color: string }
+type RoomFloorInspector = {
+  name: string
+  type: string | null
+  tint: string
+  rotation: number
+  tileWidth: number
+  tileHeight: number
+  offsetPercent: number
+}
+type FloorOption = {
+  id: string
+  label: string
+  color: string
+  lineColor: string
+  width: number
+  height: number
+  lines: string
+  rotation: number
+}
+type FloorTintOption = { id: string; label: string; color: string }
 
 const props = defineProps<{
   item: PlanItem | null
@@ -33,6 +50,7 @@ const emit = defineEmits<{
   floorTypeChange: [type: string | null]
   floorTintChange: [tint: string]
   floorRotationChange: [rotation: number]
+  floorPatternChange: [change: { property: 'tileWidth' | 'tileHeight' | 'offsetPercent'; value: number }]
 }>()
 
 const activeTab = ref<'properties' | 'appearance'>('properties')
@@ -52,15 +70,20 @@ function onRotationChange(event: Event) {
   if (Number.isFinite(rotation)) emit('rotationChange', rotation)
 }
 
-function onFloorTypeChange(event: Event) {
-  if (!(event.target instanceof HTMLSelectElement)) return
-  emit('floorTypeChange', event.target.value || null)
-}
-
 function onFloorRotationChange(event: Event) {
   if (!(event.target instanceof HTMLInputElement)) return
   const rotation = Number(event.target.value)
   if (Number.isFinite(rotation)) emit('floorRotationChange', rotation)
+}
+
+function onFloorPatternChange(event: Event, property: 'tileWidth' | 'tileHeight' | 'offsetPercent') {
+  if (!(event.target instanceof HTMLInputElement)) return
+  const value = Number(event.target.value)
+  const minimum = property === 'offsetPercent' ? 0 : 1
+  const maximum = property === 'offsetPercent' ? 100 : 1000
+  if (Number.isFinite(value) && value >= minimum && value <= maximum) {
+    emit('floorPatternChange', { property, value })
+  }
 }
 
 function onWallDimensionChange(event: Event, dimension: 'length' | 'depth' | 'height') {
@@ -101,12 +124,26 @@ function onWallDimensionChange(event: Event, dimension: 'length' | 'depth' | 'he
         <button id="room-appearance-tab" class="inspector-tab is-active" role="tab" aria-selected="true" aria-controls="room-appearance-panel">{{ t('Appearance') }}</button>
       </div>
       <div id="room-appearance-panel" class="appearance-panel" role="tabpanel" aria-labelledby="room-appearance-tab">
-        <label class="property-label">{{ t('Floor type') }}
-          <select :value="roomFloor.type ?? ''" @change="onFloorTypeChange">
-            <option value="">{{ t('No flooring') }}</option>
-            <option v-for="floorType in floorTypeOptions" :key="floorType.id" :value="floorType.id">{{ floorType.label }}</option>
-          </select>
-        </label>
+        <span class="property-label">{{ t('Floor type') }}</span>
+        <div class="floor-type-options" role="group" :aria-label="t('Floor type')">
+          <button
+            v-for="floorType in floorTypeOptions"
+            :key="floorType.id"
+            class="floor-type-option"
+            :class="{ 'is-selected': roomFloor.type === floorType.id }"
+            type="button"
+            :aria-label="`${t('Select floor type')} ${floorType.label}`"
+            :aria-pressed="roomFloor.type === floorType.id"
+            @click="emit('floorTypeChange', floorType.id)"
+          >
+            <svg class="floor-type-preview" :viewBox="`0 0 ${floorType.width} ${floorType.height}`" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+              <rect :width="floorType.width" :height="floorType.height" :fill="floorType.color"/>
+              <path :d="floorType.lines" fill="none" :stroke="floorType.lineColor" stroke-width="1.5" :transform="`rotate(${floorType.rotation} ${floorType.width / 2} ${floorType.height / 2})`"/>
+            </svg>
+            <span>{{ floorType.label }}</span>
+          </button>
+        </div>
+        <button class="floor-no-type" type="button" :aria-pressed="roomFloor.type === null" @click="emit('floorTypeChange', null)">{{ t('No flooring') }}</button>
         <template v-if="roomFloor.type">
           <span class="property-label">{{ t('Tint') }}</span>
           <div class="floor-tint-options" role="group" :aria-label="t('Tint')">
@@ -124,13 +161,27 @@ function onWallDimensionChange(event: Event, dimension: 'length' | 'depth' | 'he
               <span>{{ tint.label }}</span>
             </button>
           </div>
-          <label class="property-label rotation-property-label">{{ t('Flooring angle') }}
-            <span>°</span>
-            <div class="rotation-controls">
-              <input :value="roomFloor.rotation" :aria-label="t('Flooring angle')" type="number" min="0" max="359" step="1" @change="onFloorRotationChange">
-              <button class="rotate-button" type="button" :aria-label="t('Rotate flooring 90°')" :title="t('Rotate flooring 90°')" @click="emit('floorRotationChange', roomFloor.rotation + 90)">↻</button>
-            </div>
-          </label>
+          <span class="property-label">{{ t('Tile size') }} <span>cm</span></span>
+          <div class="property-row floor-size-row">
+            <label class="property-label">{{ t('Width') }} <span>cm</span>
+              <input :value="roomFloor.tileWidth" type="number" min="1" max="1000" step="1" @change="onFloorPatternChange($event, 'tileWidth')">
+            </label>
+            <label class="property-label">{{ t('Height') }} <span>cm</span>
+              <input :value="roomFloor.tileHeight" type="number" min="1" max="1000" step="1" @change="onFloorPatternChange($event, 'tileHeight')">
+            </label>
+          </div>
+          <div class="floor-offset-row">
+            <label class="property-label">{{ t('Row offset') }} <span>%</span>
+              <input :value="roomFloor.offsetPercent" type="number" min="0" max="100" step="1" @change="onFloorPatternChange($event, 'offsetPercent')">
+            </label>
+            <label class="property-label rotation-property-label">{{ t('Flooring angle') }}
+              <span>°</span>
+              <div class="rotation-controls">
+                <input :value="roomFloor.rotation" :aria-label="t('Flooring angle')" type="number" min="0" max="359" step="1" @change="onFloorRotationChange">
+                <button class="rotate-button" type="button" :aria-label="t('Rotate 45°')" :title="t('Rotate 45°')" @click="emit('floorRotationChange', roomFloor.rotation + 45)">↻</button>
+              </div>
+            </label>
+          </div>
         </template>
       </div>
     </template>
@@ -169,14 +220,14 @@ function onWallDimensionChange(event: Event, dimension: 'length' | 'depth' | 'he
                 type="number"
                 min="0"
                 max="360"
-                :step="item.section === 'wall-details' ? 180 : 'any'"
+                :step="item.section === 'wall-details' ? 180 : 45"
                 @change="onRotationChange"
               >
               <button
                 class="rotate-button"
                 type="button"
-                :aria-label="t(item.section === 'wall-details' ? 'Rotate 180°' : 'Rotate 90°')"
-                :title="t(item.section === 'wall-details' ? 'Rotate 180°' : 'Rotate 90°')"
+                :aria-label="t(item.section === 'wall-details' ? 'Rotate 180°' : 'Rotate 45°')"
+                :title="t(item.section === 'wall-details' ? 'Rotate 180°' : 'Rotate 45°')"
                 @click="emit('rotate')"
               >↻</button>
             </div>
@@ -301,18 +352,63 @@ function onWallDimensionChange(event: Event, dimension: 'length' | 'depth' | 'he
     display: block;
     margin-bottom: 10px;
   }
+}
 
-  select {
-    display: block;
-    width: 100%;
-    height: 34px;
-    margin-top: 5px;
-    padding: 0 8px;
-    border: 1px solid #e3e3dc;
-    border-radius: 6px;
-    background: #fff;
+.floor-type-options {
+  display: flex;
+  justify-content: space-between;
+  gap: 5px;
+  margin: 0 0 6px;
+}
+
+.floor-type-option {
+  display: grid;
+  flex: 1;
+  justify-items: center;
+  gap: 5px;
+  padding: 5px 2px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: #fff;
+  color: #555850;
+  font: 500 9px 'Manrope', sans-serif;
+  cursor: pointer;
+
+  &.is-selected {
+    border-color: #91a490;
+    background: #f3f6f1;
     color: #41443e;
-    font: 500 12px 'Manrope', sans-serif;
+  }
+
+  &:focus-visible {
+    outline: 2px solid #526d57;
+    outline-offset: 2px;
+  }
+}
+
+.floor-type-preview {
+  width: 45px;
+  height: 45px;
+  border: 1px solid #d8d8d0;
+  border-radius: 50%;
+  background: #fff;
+  overflow: hidden;
+}
+
+.floor-no-type {
+  margin: 0 0 12px;
+  padding: 4px 7px;
+  border: 1px solid #e3e3dc;
+  border-radius: 5px;
+  background: #fff;
+  color: #777a72;
+  font: 500 10px 'Manrope', sans-serif;
+  cursor: pointer;
+
+  &[aria-pressed='true'] {
+    border-color: #91a490;
+    background: #f3f6f1;
+    color: #41443e;
   }
 }
 
@@ -355,6 +451,26 @@ function onWallDimensionChange(event: Event, dimension: 'length' | 'depth' | 'he
   border-radius: 50%;
   background: var(--swatch-color);
   box-shadow: 0 0 0 1px #d8d8d0;
+}
+
+.floor-size-row {
+  gap: 8px;
+  margin-bottom: 9px;
+
+  .property-label {
+    min-width: 0;
+    margin-bottom: 0;
+  }
+}
+
+.floor-offset-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+
+  .property-label {
+    min-width: 0;
+  }
 }
 
 .opening-state-control {

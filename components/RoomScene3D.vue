@@ -55,6 +55,7 @@ let resizeObserver: ResizeObserver | undefined
 let animationFrame = 0
 let raycaster: THREE.Raycaster | undefined
 let firstPersonController: RoomSceneFirstPersonController | undefined
+const firstPersonItemMoveKeys = new Set<string>()
 let previousRenderTime = 0
 let lastEgoCameraEmitTime = 0
 let pointerLockRequestId = 0
@@ -639,6 +640,11 @@ function onFirstPersonKeyDown(event: KeyboardEvent) {
     return
   }
   if (!event.key.startsWith('Arrow')) return
+  if (event.ctrlKey && props.selectedId !== null) {
+    firstPersonItemMoveKeys.add(event.key)
+    return
+  }
+  if (firstPersonItemMoveKeys.has(event.key)) return
   event.preventDefault()
   event.stopPropagation()
   if (firstPersonTransition) return
@@ -647,6 +653,7 @@ function onFirstPersonKeyDown(event: KeyboardEvent) {
 
 function onFirstPersonKeyUp(event: KeyboardEvent) {
   if (!isFirstPersonMode.value || !event.key.startsWith('Arrow')) return
+  if (firstPersonItemMoveKeys.delete(event.key)) return
   event.preventDefault()
   event.stopPropagation()
   firstPersonController?.setKey(event.key, false)
@@ -825,6 +832,7 @@ function exitFirstPersonMode(releasePointerLock = true) {
   syncEgoCameraFromFirstPerson(true)
   pointerLockRequestId++
   isFirstPersonMode.value = false
+  firstPersonItemMoveKeys.clear()
   updateEgoCameraModel()
   firstPersonTransition = null
   firstPersonController?.clearKeys()

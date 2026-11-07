@@ -4,8 +4,10 @@ import type { EgoCamera } from '~/types/planner'
 const MOVE_SPEED = 2.5
 const LOOK_SENSITIVITY = 0.002
 export const EYE_HEIGHT = 1.65
-const ROOM_EDGE_MARGIN = 0.2
 const MAX_PITCH = Math.PI / 2 - 0.05
+
+type RoomBoundary = THREE.Vector2[]
+type Doorway = { start: THREE.Vector2; end: THREE.Vector2 }
 
 export class RoomSceneFirstPersonController {
   private yaw = 0
@@ -66,7 +68,7 @@ export class RoomSceneFirstPersonController {
     this.pressedKeys.clear()
   }
 
-  update(deltaSeconds: number, roomWidth: number, roomDepth: number) {
+  update(deltaSeconds: number, rooms: RoomBoundary[], doorways: Doorway[]) {
     let strafe = Number(this.pressedKeys.has('ArrowRight')) - Number(this.pressedKeys.has('ArrowLeft'))
     let forward = Number(this.pressedKeys.has('ArrowUp')) - Number(this.pressedKeys.has('ArrowDown'))
     const length = Math.hypot(strafe, forward)
@@ -76,13 +78,60 @@ export class RoomSceneFirstPersonController {
     forward /= length
     const cosine = Math.cos(this.yaw)
     const sine = Math.sin(this.yaw)
-    this.camera.position.x += (cosine * strafe - sine * forward) * MOVE_SPEED * deltaSeconds
-    this.camera.position.z += (-sine * strafe - cosine * forward) * MOVE_SPEED * deltaSeconds
+    const start = new THREE.Vector2(this.camera.position.x, this.camera.position.z)
+    const dx = (cosine * strafe - sine * forward) * MOVE_SPEED * deltaSeconds
+    const dz = (-sine * strafe - cosine * forward) * MOVE_SPEED * deltaSeconds
+    const destination = start.clone().add(new THREE.Vector2(dx, dz))
 
-    const maxX = Math.max(roomWidth / 2 - ROOM_EDGE_MARGIN, 0)
-    const maxZ = Math.max(roomDepth / 2 - ROOM_EDGE_MARGIN, 0)
-    this.camera.position.x = THREE.MathUtils.clamp(this.camera.position.x, -maxX, maxX)
-    this.camera.position.z = THREE.MathUtils.clamp(this.camera.position.z, -maxZ, maxZ)
+    if (this.canCrossRoomBoundaries(start, destination, rooms, doorways)) {
+      this.camera.position.x = destination.x
+      this.camera.position.z = destination.y
+    } else {
+      const horizontal = start.clone().add(new THREE.Vector2(dx, 0))
+      const vertical = start.clone().add(new THREE.Vector2(0, dz))
+      const horizontalAllowed = this.canCrossRoomBoundaries(start, horizontal, rooms, doorways)
+      const verticalAllowed = this.canCrossRoomBoundaries(start, vertical, rooms, doorways)
+      if (horizontalAllowed && (!verticalAllowed || Math.abs(dx) >= Math.abs(dz))) {
+        this.camera.position.x = horizontal.x
+      } else if (verticalAllowed) {
+        this.camera.position.z = vertical.y
+      }
+    }
     return true
+  }
+
+  private canCrossRoomBoundaries(
+    start: THREE.Vector2,
+    end: THREE.Vector2,
+    rooms: RoomBoundary[],
+    doorways: Doorway[],
+  ) {
+    for (const room of rooms) {
+      for (let index = 0; index < room.length; index++) {
+        const wallStart = room[index]!
+        const wallEnd = room[(index + 1) % room.length]!
+        const movement = end.clone().sub(start)
+        const wall = wallEnd.clone().sub(wallStart)
+        const denominator = movement.x * wall.y - movement.y * wall.x
+        if (Math.abs(denominator) < 1e-8) continue
+
+        const offset = wallStart.clone().sub(start)
+        const movementParameter = (offset.x * wall.y - offset.y * wall.x) / denominator
+        const wallParameter = (offset.x * movement.y - offset.y * movement.x) / denominator
+        if (movementParameter <= 1e-6 || movementParameter > 1 || wallParameter < 0 || wallParameter > 1) continue
+
+        const crossing = start.clone().addScaledVector(movement, movementParameter)
+        if (!doorways.some((doorway) => this.isPointOnSegment(crossing, doorway.start, doorway.end))) return false
+      }
+    }
+    return true
+  }
+
+  private isPointOnSegment(point: THREE.Vector2, start: THREE.Vector2, end: THREE.Vector2) {
+    const segment = end.clone().sub(start)
+    const lengthSquared = segment.lengthSq()
+    if (lengthSquared < 1e-8) return point.distanceTo(start) < 0.02
+    const parameter = THREE.MathUtils.clamp(point.clone().sub(start).dot(segment) / lengthSquared, 0, 1)
+    return point.distanceTo(start.clone().addScaledVector(segment, parameter)) < 0.02
   }
 }

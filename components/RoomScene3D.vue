@@ -97,6 +97,53 @@ function roomPosition(x: number, z: number) {
   }
 }
 
+const firstPersonRoomBoundaries = computed(() => props.rooms.map((room) => room.map((point) => {
+  const position = roomPosition(point.x, point.y)
+  return new THREE.Vector2(position.x, position.z)
+})))
+
+const firstPersonDoorways = computed(() => {
+  const doors = props.items.filter((item) =>
+    item.wallDetailCategory === 'Doors' && getCatalogItem(item.kind).wallMounted)
+  const doorways: Array<{ start: THREE.Vector2; end: THREE.Vector2 }> = []
+  for (const room of firstPersonRoomBoundaries.value) {
+    for (let index = 0; index < room.length; index++) {
+      const start = room[index]!
+      const end = room[(index + 1) % room.length]!
+      const edge = end.clone().sub(start)
+      const edgeLength = edge.length()
+      if (edgeLength < 0.02) continue
+      const direction = edge.clone().divideScalar(edgeLength)
+      for (const door of doors) {
+        const position = roomPosition(door.x, door.y)
+        const center = new THREE.Vector2(position.x, position.z)
+        const offset = center.clone().sub(start)
+        const parameter = offset.dot(direction) / edgeLength
+        if (parameter < 0 || parameter > 1) continue
+        const projected = start.clone().addScaledVector(direction, parameter * edgeLength)
+        if (center.distanceTo(projected) > 0.12) continue
+
+        const doorDirection = new THREE.Vector2(
+          Math.cos(door.rotation * Math.PI / 180),
+          Math.sin(door.rotation * Math.PI / 180),
+        )
+        if (Math.abs(doorDirection.dot(direction)) < 0.98) continue
+
+        const halfWidth = Math.max(door.width / 200 - 0.15, 0)
+        const centerDistance = parameter * edgeLength
+        const openingStart = Math.max(0, centerDistance - halfWidth)
+        const openingEnd = Math.min(edgeLength, centerDistance + halfWidth)
+        if (openingEnd - openingStart < 0.1) continue
+        doorways.push({
+          start: start.clone().addScaledVector(direction, openingStart),
+          end: start.clone().addScaledVector(direction, openingEnd),
+        })
+      }
+    }
+  }
+  return doorways
+})
+
 function material(color: THREE.ColorRepresentation, roughness = 0.82, options: THREE.MeshStandardMaterialParameters = {}) {
   const parameters: THREE.MeshStandardMaterialParameters = { color, roughness, ...options }
   for (const key of ['transparent', 'opacity', 'metalness'] as const) {
@@ -464,7 +511,7 @@ function render(timestamp: number) {
         ? Math.min((timestamp - previousRenderTime) / 1000, 0.05)
         : 0
       previousRenderTime = timestamp
-      if (firstPersonController?.update(deltaSeconds, roomWidthM.value, roomDepthM.value)) {
+      if (firstPersonController?.update(deltaSeconds, firstPersonRoomBoundaries.value, firstPersonDoorways.value)) {
         syncEgoCameraFromFirstPerson()
       }
     } else if (cameraTransition) {

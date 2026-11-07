@@ -2020,7 +2020,7 @@ function moveSelectedItemWithKeys(timestamp: number) {
     dx = dx / length * speed * elapsed
     dy = dy / length * speed * elapsed
     if (selectedWall) {
-      moveRoomWall(selectedWall, dx, dy)
+      moveRoomWall(selectedWall, dx, dy, allRooms.value, captureWallMountedAnchors())
     } else if (item) {
       const target = { x: item.x + dx, y: item.y + dy }
       if (getCatalogItem(item.kind).wallMounted) {
@@ -2639,7 +2639,23 @@ button { color: inherit; cursor: pointer; }
 .scene-crosshair::after { width: 26px; height: 2px; }
 .ego-camera-marker { cursor: grab; }
 .ego-camera-marker.is-dragging { cursor: grabbing; }
-.scene-first-person-help { position: absolute; top: 16px; left: 50%; max-width: calc(100% - 32px); padding: 8px 10px; transform: translateX(-50%); border: 1px solid #e8e5dc; border-radius: 7px; background: #ffffffdf; color: #62695f; font-size: 9px; text-align: center; pointer-events: none; }
+.scene-first-person-help { position: absolute; top: 16px; left: 50%; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 12px; max-width: calc(100% - 32px); padding: 8px 10px; transform: translateX(-50%); border: 1px solid #e8e5dc; border-radius: 7px; background: #ffffffdf; color: #62695f; font-size: 9px; text-align: center; pointer-events: none; }
+.first-person-help-control { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.first-person-help-control > span:last-child { display: grid; gap: 2px; }
+.first-person-help-control strong { color: #4c5148; font-size: 9px; }
+.first-person-help-keycaps { display: flex; flex: 0 0 auto; align-items: center; gap: 2px; }
+.first-person-help-keycaps kbd { display: grid; min-width: 20px; height: 20px; place-items: center; padding: 0 4px; border: 1px solid #deddd6; border-bottom-width: 2px; border-radius: 4px; background: #fff; color: #4e524a; font: 600 10px/1 sans-serif; }
+.first-person-help-arrow-keycaps { display: grid; grid-template-columns: repeat(3, 18px); grid-template-rows: repeat(2, 18px); gap: 1px; }
+.first-person-help-arrow-keycaps kbd { min-width: 18px; height: 18px; padding: 0; }
+.first-person-help-arrow-keycaps .key-0 { grid-column: 2; grid-row: 1; }
+.first-person-help-arrow-keycaps .key-1 { grid-column: 1; grid-row: 2; }
+.first-person-help-arrow-keycaps .key-2 { grid-column: 2; grid-row: 2; }
+.first-person-help-arrow-keycaps .key-3 { grid-column: 3; grid-row: 2; }
+.first-person-help-mouse { flex: 0 0 20px; width: 20px; height: 28px; fill: #f1f0eb; stroke: #a4a69d; stroke-width: 1.2; }
+.first-person-help-mouse .mouse-divider { fill: none; }
+.first-person-help-mouse .mouse-active { fill: #cbd9cc; stroke: #668371; }
+.first-person-help-mouse .mouse-wheel { fill: #fff; }
+.first-person-help-mouse .mouse-wheel.mouse-active { fill: #668371; }
 .scene-first-person-error { position: absolute; top: 50%; left: 50%; max-width: calc(100% - 32px); padding: 9px 12px; transform: translate(-50%, -50%); border: 1px solid #e8c9bd; border-radius: 7px; background: #fff8f4; color: #854d3d; font-size: 11px; text-align: center; box-shadow: 0 2px 8px #34322814; }
 .scene-controls { position: absolute; left: 50%; bottom: 15px; display: flex; gap: 4px; transform: translateX(-50%); padding: 5px; border: 1px solid #e7e5de; border-radius: 8px; background: #ffffffdf; box-shadow: 0 2px 8px #3432280a; pointer-events: none; }
 .scene-controls span { display: flex; align-items: center; gap: 5px; padding: 5px 8px; color: #74776e; font-size: 9px; white-space: nowrap; }

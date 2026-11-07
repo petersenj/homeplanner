@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { keyboardKeySymbols, keyboardMouseInteractions } from '~/data/keyboardMouseInteractions'
+import { firstPersonInteractions, keyboardKeySymbols, keyboardMouseInteractions } from '~/data/keyboardMouseInteractions'
 
 defineProps<{
   open: boolean
@@ -54,6 +54,42 @@ const views = ['2d', '3d'] as const
             <h4>{{ t('Mouse') }}</h4>
             <ul>
               <li v-for="(interaction, index) in keyboardMouseInteractions[mode].mouse" :key="`${mode}-mouse-${index}`">
+                <svg
+                  class="mouse-diagram"
+                  viewBox="0 0 32 44"
+                  role="img"
+                  :aria-label="t(interaction.gesture)"
+                >
+                  <rect x="4" y="2" width="24" height="40" rx="11" />
+                  <path class="mouse-divider" d="M16 3v14M5 17h22" />
+                  <path :class="{ 'mouse-active': interaction.button === 'left' }" d="M16 3v14H5V13a10 10 0 0 1 11-10Z" />
+                  <path :class="{ 'mouse-active': interaction.button === 'right' }" d="M16 3v14h11v-4A10 10 0 0 0 16 3Z" />
+                  <rect class="mouse-wheel" :class="{ 'mouse-active': interaction.button === 'wheel' }" x="14" y="8" width="4" height="7" rx="2" />
+                </svg>
+                <span><strong>{{ t(interaction.gesture) }}</strong>{{ t(interaction.description) }}</span>
+              </li>
+            </ul>
+          </section>
+        </div>
+      </section>
+      <section v-if="view === '3d'" class="helper-view helper-view-active" :aria-label="t('First-person controls')">
+        <h3>{{ t('First-person controls') }}</h3>
+        <div class="helper-groups">
+          <section class="helper-group">
+            <h4>{{ t('Keyboard') }}</h4>
+            <ul>
+              <li v-for="(interaction, index) in firstPersonInteractions.keyboard" :key="`first-person-key-${index}`">
+                <span class="keycaps" :class="{ 'arrow-keycaps': interaction.keys[0] === 'ArrowUp' }">
+                  <kbd v-for="(key, keyIndex) in interaction.keys" :key="key" :class="`key-${keyIndex}`" :aria-label="t(keyboardKeySymbols[key].label)">{{ keyboardKeySymbols[key].symbol }}</kbd>
+                </span>
+                <span>{{ t(interaction.description) }}</span>
+              </li>
+            </ul>
+          </section>
+          <section class="helper-group">
+            <h4>{{ t('Mouse') }}</h4>
+            <ul>
+              <li v-for="(interaction, index) in firstPersonInteractions.mouse" :key="`first-person-mouse-${index}`">
                 <svg
                   class="mouse-diagram"
                   viewBox="0 0 32 44"

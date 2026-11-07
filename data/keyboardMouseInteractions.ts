@@ -4,13 +4,50 @@ export const keyboardKeySymbols = {
   ArrowDown: { symbol: '↓', label: 'Arrow down' },
   ArrowRight: { symbol: '→', label: 'Arrow right' },
   Shift: { symbol: '⇧', label: 'Shift' },
+  Control: { symbol: 'Ctrl', label: 'Control' },
   Delete: { symbol: '⌫', label: 'Delete' },
   Enter: { symbol: '↵', label: 'Enter' },
   Space: { symbol: '␣', label: 'Space' },
+  Escape: { symbol: 'Esc', label: 'Escape' },
 } as const
 
 export type KeyboardKey = keyof typeof keyboardKeySymbols
 type MouseButton = 'left' | 'right' | 'wheel'
+
+export const firstPersonInteractions: {
+  keyboard: { keys: readonly KeyboardKey[]; description: string }[]
+  mouse: { button?: MouseButton; gesture: string; description: string }[]
+} = {
+  keyboard: [
+    {
+      keys: ['ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight'],
+      description: 'Move through the room.',
+    },
+    {
+      keys: ['Escape'],
+      description: 'Exit first-person mode.',
+    },
+    {
+      keys: ['Control'],
+      description: 'Hold Ctrl with arrow keys to move the selected object.',
+    },
+    {
+      keys: ['Delete'],
+      description: 'Remove the selected object.',
+    },
+  ],
+  mouse: [
+    {
+      gesture: 'Move mouse',
+      description: 'Look around.',
+    },
+    {
+      button: 'left',
+      gesture: 'Click',
+      description: 'Select an object.',
+    },
+  ],
+}
 
 export const keyboardMouseInteractions = {
   '2d': {

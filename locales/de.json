@@ -278,6 +278,8 @@
     "Arrow left": "Pfeil nach links",
     "Arrow down": "Pfeil nach unten",
     "Arrow right": "Pfeil nach rechts",
+    "Control": "Strg",
+    "Escape": "Escape",
     "Shift": "Umschalt",
     "Delete": "Entf",
     "Enter": "Eingabe",
@@ -297,6 +299,13 @@
     "Click / drag": "Klick / Ziehen",
     "Select objects or walls; drag to orbit around the room.": "Objekte oder Wände auswählen; ziehen, um den Raum zu umkreisen.",
     "Right-drag": "Rechts ziehen",
-    "Pan the camera.": "Kamera verschieben."
+    "Pan the camera.": "Kamera verschieben.",
+    "First-person controls": "Steuerung der Ego-Perspektive",
+    "Move through the room.": "Durch den Raum bewegen.",
+    "Exit first-person mode.": "Ego-Perspektive verlassen.",
+    "Hold Ctrl with arrow keys to move the selected object.": "Strg + Pfeiltasten: Ausgewähltes Objekt verschieben.",
+    "Move mouse": "Maus bewegen",
+    "Look around.": "Umschauen.",
+    "Select an object.": "Objekt auswählen."
   }
 }

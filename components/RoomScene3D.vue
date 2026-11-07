@@ -7,6 +7,7 @@ import { isEgoCameraPointInsideRooms } from '~/utils/egoCameraPlan'
 import { createEgoCameraModel, setEgoCameraModelSelected } from '~/utils/roomSceneEgoCamera'
 import { RoomSceneFirstPersonController } from '~/utils/roomSceneFirstPerson'
 import { pickRoomSceneSelection } from '~/utils/roomSceneSelection'
+import { firstPersonInteractions, keyboardKeySymbols } from '~/data/keyboardMouseInteractions'
 import type { CatalogItem } from '~/catalog/types'
 import type { CameraSnapshot, CameraVector, EgoCamera, Point } from '~/types/planner'
 const { language, t } = useAppLanguage()
@@ -1014,7 +1015,32 @@ onBeforeUnmount(() => {
       :aria-label="t(isFirstPersonMode ? 'Interactive 3D room. Use the arrow keys to move, the mouse to look around, click to select, and Escape to exit first-person mode.' : 'Interactive 3D room. Drag to orbit, scroll to zoom, right-drag to pan.')"
     />
     <div v-if="isFirstPersonMode" class="scene-crosshair" aria-hidden="true"></div>
-    <div v-if="isFirstPersonMode" class="scene-first-person-help">{{ t('Arrow keys to move · Mouse to look · Click to select · Esc to exit') }}</div>
+    <div v-if="isFirstPersonMode" class="scene-first-person-help" role="note" :aria-label="t('First-person controls')">
+      <span
+        v-for="(interaction, index) in firstPersonInteractions.keyboard"
+        :key="`first-person-key-${index}`"
+        class="first-person-help-control"
+      >
+        <span class="first-person-help-keycaps" :class="{ 'first-person-help-arrow-keycaps': interaction.keys[0] === 'ArrowUp' }" aria-hidden="true">
+          <kbd v-for="(key, keyIndex) in interaction.keys" :key="key" :class="`key-${keyIndex}`">{{ keyboardKeySymbols[key].symbol }}</kbd>
+        </span>
+        <span>{{ t(interaction.description) }}</span>
+      </span>
+      <span
+        v-for="(interaction, index) in firstPersonInteractions.mouse"
+        :key="`first-person-mouse-${index}`"
+        class="first-person-help-control"
+      >
+        <svg class="first-person-help-mouse" viewBox="0 0 32 44" aria-hidden="true">
+          <rect x="4" y="2" width="24" height="40" rx="11" />
+          <path class="mouse-divider" d="M16 3v14M5 17h22" />
+          <path :class="{ 'mouse-active': interaction.button === 'left' }" d="M16 3v14H5V13a10 10 0 0 1 11-10Z" />
+          <path :class="{ 'mouse-active': interaction.button === 'right' }" d="M16 3v14h11v-4A10 10 0 0 0 16 3Z" />
+          <rect class="mouse-wheel" :class="{ 'mouse-active': interaction.button === 'wheel' }" x="14" y="8" width="4" height="7" rx="2" />
+        </svg>
+        <span><strong>{{ t(interaction.gesture) }}</strong>{{ t(interaction.description) }}</span>
+      </span>
+    </div>
     <div v-if="firstPersonError" class="scene-first-person-error" role="alert">{{ t(firstPersonError) }}</div>
     <div v-if="sceneError" class="scene-loading scene-error">{{ t(sceneError) }}</div>
     <div v-else-if="!isReady" class="scene-loading">{{ t('Preparing your room…') }}</div>

@@ -1,5 +1,15 @@
 [
   {
+    "date": "2026-11-06",
+    "subject": "fixed missing click target for final tutorial step",
+    "type": "bugfix"
+  },
+  {
+    "date": "2026-11-06",
+    "subject": "added first person mode",
+    "type": "feature"
+  },
+  {
     "date": "2026-11-05",
     "subject": "[improve] added onest and manrope font",
     "type": "improvement"
@@ -138,15 +148,5 @@
     "date": "2026-11-01",
     "subject": "add smooth rotation animation in 2d and 3d",
     "type": "feature"
-  },
-  {
-    "date": "2026-11-01",
-    "subject": "sort furniture and objects by localised label",
-    "type": "other"
-  },
-  {
-    "date": "2026-11-01",
-    "subject": "show measurements while dragging with keyboard",
-    "type": "other"
   }
 ]
